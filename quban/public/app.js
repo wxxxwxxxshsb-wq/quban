@@ -14,6 +14,9 @@ let me = null;           // { name } 或 null（游客）
 let tab = 'home';
 let stopGame = null;     // 当前游戏的清理函数
 let es = null;           // SSE
+let activeOnlineGame = null;
+let inviteDialogId = null;
+const handledInvites = new Set();
 
 /* ---------- 本地存储（按账号分开） ---------- */
 const store = {
@@ -105,6 +108,7 @@ function achievements() {
 /* ---------- 路由 / 渲染 ---------- */
 function go(t) {
   if (stopGame) { stopGame(); stopGame = null; }
+  if (t !== 'games') activeOnlineGame = null;
   tab = t; chat.open = false; render();
 }
 function render() {
@@ -234,6 +238,12 @@ function updateDot() { $('#dot').hidden = !Object.values(chat.unread).some(n => 
 function connectStream() {
   if (es) es.close(); if (!me) return;
   es = new EventSource('/api/stream?token=' + token);
+  es.addEventListener('game-invite', e => showGameInvite(JSON.parse(e.data)));
+  es.addEventListener('game-update', e => {
+    const game = JSON.parse(e.data);
+    if (activeOnlineGame === game.id && tab === 'games') renderOnlineBoard(game);
+    if (game.status === 'declined' && game.players[0] === me?.name) toast(`${game.players[1]} 暂时无法对战`);
+  });
   es.addEventListener('msg', e => {
     const m = JSON.parse(e.data);
     (chat.msgs[m.from] = chat.msgs[m.from] || []).push(m);
@@ -241,15 +251,66 @@ function connectStream() {
     else { chat.unread[m.from] = (chat.unread[m.from] || 0) + 1; updateDot(); toast(`${m.from}：${m.text.slice(0, 20)}`); if (tab === 'chat') viewChat(); }
   });
   es.addEventListener('friend', e => { toast(JSON.parse(e.data).name + ' 加你为好友了'); if (tab === 'chat') viewChat(); });
+  api('/games/invites').then(({ invites }) => invites.forEach(showGameInvite)).catch(() => {});
 }
 
 /* ===== 游戏大厅 ===== */
 function viewGames() {
   const s = stats(), dg = dailyGame();
-  $('#main').innerHTML = `<div class="wrap"><h1>游戏</h1><p class="sub">每个游戏都有排行榜，和朋友比一比</p>
+  $('#main').innerHTML = `<div class="wrap"><h1>游戏</h1><p class="sub">轻松玩一局，或者邀请好友来场真正的对决。</p>
+    <div class="online-challenge" id="onlineChallenge"><div class="online-mark">✦</div><div class="online-copy"><span class="eyebrow">REAL FRIENDS · NO BOTS</span><h2>好友五子棋</h2><p>邀请好友实时对弈，轮到谁走一目了然。</p></div><button class="btn" id="inviteFriend">邀好友开局 ↗</button></div>
     <div class="grid" style="margin-top:18px">${GAMES.map(g => `<div class="card gcard tile" data-g="${g.id}"><span class="emo">${g.emo}</span><b style="font-size:19px">${g.name}${g.id === dg.id ? ' <span class="tag">今日挑战</span>' : ''}</b><span class="sub">${g.desc}</span><span class="sub">最佳：${s.best[g.id] ?? '—'}</span></div>`).join('')}</div>
-    <p class="sub" style="margin-top:22px">更多游戏正在路上：数独、俄罗斯方块、你画我猜（好友对战）……</p></div>`;
+    <p class="sub" style="margin-top:22px">离线小游戏随时开局；好友对战需要双方都登录并在线。</p></div>`;
   $$('[data-g]').forEach(e => e.onclick = () => openGame(e.dataset.g));
+  $('#inviteFriend').onclick = showFriendPicker;
+}
+
+async function showFriendPicker() {
+  if (!me) return showAuth();
+  await loadFriends();
+  const a = $('#auth'); a.hidden = false;
+  a.innerHTML = `<div class="box friend-picker"><img src="/logo.svg" alt="趣伴"><h1>约好友开一局</h1><p class="sub">选一位在线好友，马上开始五子棋。</p>${chat.friends.length ? chat.friends.map(f => `<button class="friend-choice" data-friend="${esc(f.name)}" ${f.online ? '' : 'disabled'}><span>${esc(f.name[0])}</span><b>${esc(f.name)}</b><small>${f.online ? '在线' : '暂时离线'}</small></button>`).join('') : '<div class="sub">你还没有好友。先到聊天页添加好友，就能邀请对战。</div>'}<button class="btn ghost" id="closePicker">关闭</button></div>`;
+  $$('[data-friend]', a).forEach(b => b.onclick = () => { a.hidden = true; inviteOnlineGame(b.dataset.friend); });
+  $('#closePicker').onclick = () => { a.hidden = true; };
+}
+
+async function inviteOnlineGame(friend) {
+  try {
+    const { game } = await api('/games/invite', { friend });
+    toast(`已邀请 ${friend}，等对方接受…`); openOnlineGame(game.id);
+  } catch (e) { toast(e.message); }
+}
+
+async function openOnlineGame(id) {
+  try {
+    const { game } = await api('/games/' + encodeURIComponent(id));
+    activeOnlineGame = id; tab = 'games'; $$('#nav button').forEach(b => b.classList.toggle('on', b.dataset.tab === 'games'));
+    renderOnlineBoard(game);
+  } catch (e) { toast(e.message); go('games'); }
+}
+
+function renderOnlineBoard(game) {
+  const mine = me && game.players.includes(me.name);
+  const mark = game.board.map((v, i) => `<button class="og-cell ${v === 1 ? 'black' : v === 2 ? 'white' : ''}" data-cell="${i}" aria-label="${v ? (v === 1 ? '黑棋' : '白棋') : '空位'}" ${game.status !== 'active' || game.turn !== me?.name || v ? 'disabled' : ''}>${v === 1 ? '●' : v === 2 ? '○' : ''}</button>`).join('');
+  let status = game.status === 'pending' ? (game.players[0] === me?.name ? `正在等 ${esc(game.players[1])} 接受邀请…` : '等待对方开始') : game.status === 'declined' ? '对方暂时不方便，改天再战。' : game.status === 'finished' ? (game.winner ? `${game.winner === me?.name ? '🎉 你赢了！' : `${esc(game.winner)} 赢了！`}` : '平局，再来一盘？') : game.turn === me?.name ? '轮到你了，落一子！' : `等 ${esc(game.players.find(n => n !== me?.name) || '')} 落子…`;
+  const meMark = game.players[0] === me?.name ? '黑棋' : '白棋';
+  $('#main').innerHTML = `<div class="gview online-gview"><div class="row"><button class="btn sm ghost" id="onlineBack">← 游戏大厅</button><div class="sp"></div><span class="live-pill">● LIVE</span></div><div class="online-scoreboard"><div class="online-player ${game.turn === game.players[0] && game.status === 'active' ? 'active' : ''}"><span class="piece black-piece">●</span><b>${esc(game.players[0])}${game.players[0] === me?.name ? '（你）' : ''}</b><small>${game.players[0] === me?.name ? '你执黑' : '黑棋'}</small></div><span class="online-vs">VS</span><div class="online-player ${game.turn === game.players[1] && game.status === 'active' ? 'active' : ''}"><span class="piece white-piece">○</span><b>${esc(game.players[1])}${game.players[1] === me?.name ? '（你）' : ''}</b><small>${game.players[1] === me?.name ? '你执白' : '白棋'}</small></div></div><div class="online-status ${game.status === 'finished' ? 'finished' : ''}">${status}</div><div class="online-board" role="grid">${mark}</div><div class="online-controls">${game.status === 'finished' ? `<button class="btn" id="rematch">再来一盘</button>` : ''}<button class="btn ghost" id="onlineExit">离开对局</button></div><p class="sub online-note">你执${meMark} · ${game.moves} 手 · 对局状态实时同步</p></div>`;
+  $('#onlineBack').onclick = () => { activeOnlineGame = null; go('games'); };
+  $('#onlineExit').onclick = () => { activeOnlineGame = null; go('games'); };
+  $$('[data-cell]', $('#main')).forEach(b => b.onclick = async () => {
+    try { const result = await api(`/games/${encodeURIComponent(id)}/move`, { index: +b.dataset.cell }); renderOnlineBoard(result.game); }
+    catch (e) { toast(e.message); }
+  });
+  if ($('#rematch')) $('#rematch').onclick = () => inviteOnlineGame(game.players.find(n => n !== me?.name));
+}
+
+async function showGameInvite(game) {
+  if (!game || handledInvites.has(game.id) || inviteDialogId === game.id) return;
+  handledInvites.add(game.id); inviteDialogId = game.id;
+  const from = game.players[0], a = $('#auth'); a.hidden = false;
+  a.innerHTML = `<div class="box"><img src="/logo.svg" alt="趣伴"><h1>好友来挑战啦</h1><p class="sub"><b>${esc(from)}</b> 邀请你来一场五子棋。</p><div class="row"><button class="btn ghost" id="declineGame">稍后再说</button><button class="btn" id="acceptGame">接受，开局</button></div></div>`;
+  $('#declineGame').onclick = async () => { a.hidden = true; inviteDialogId = null; try { await api(`/games/${encodeURIComponent(game.id)}/decline`, {}); } catch {} };
+  $('#acceptGame').onclick = async () => { try { const { game: accepted } = await api(`/games/${encodeURIComponent(game.id)}/accept`, {}); a.hidden = true; inviteDialogId = null; activeOnlineGame = game.id; renderOnlineBoard(accepted); } catch (e) { a.hidden = true; inviteDialogId = null; toast(e.message); } };
 }
 function openGame(id) {
   if (stopGame) { stopGame(); stopGame = null; }
@@ -540,7 +601,7 @@ function viewMe() {
       <div class="task"><span class="sp">安装到桌面 / 手机主屏幕</span><span class="sub">浏览器菜单 → 安装「趣伴」</span></div>
       <div class="task"><span class="sp">清除聊天记录（小伴）</span><button class="btn sm ghost" id="clr">清除</button></div>
       <div class="task"><span class="sp">${me ? '退出登录' : '登录 / 注册，解锁好友聊天和排行榜'}</span><button class="btn sm" id="lo">${me ? '退出' : '登录'}</button></div></div>
-    <p class="sub" style="margin-top:20px">趣伴 QuBan v2.0 · 备忘录、每日足迹、双人游戏</p></div>`;
+    <p class="sub" style="margin-top:20px">趣伴 QuBan v2.2 · 金属 X 标志、好友实时对战</p></div>`;
   $('#clr').onclick = () => { store.set('aihist', [AI_HELLO]); toast('已清除'); };
   $('#lo').onclick = () => { if (me) { localStorage.removeItem('qb_token'); token = ''; me = null; if (es) es.close(); go('home'); showAuth(); } else showAuth(); };
 }
@@ -552,13 +613,13 @@ function showAuth() {
   const paint = () => {
     a.innerHTML = `<div class="box"><img src="/logo.svg" alt="趣伴"><h1>趣伴</h1><p class="sub">聊天、AI 助手、小游戏、日常工具，一个就够</p>
       <div class="row" style="justify-content:center"><button class="pill ${mode === 'login' ? 'on' : ''}" data-m="login">登录</button><button class="pill ${mode === 'reg' ? 'on' : ''}" data-m="reg">注册</button></div>
-      <input type="text" id="un" placeholder="昵称（好友通过它找到你）" maxlength="12" autocomplete="username"><input type="password" id="pw" placeholder="密码（至少 4 位）" autocomplete="current-password">
+      <input type="text" id="un" placeholder="昵称（好友通过它找到你）" maxlength="12" autocomplete="username" value="${esc(localStorage.getItem('qb_last_user') || '')}"><input type="password" id="pw" placeholder="密码（至少 4 位）" autocomplete="current-password">
       <div class="err" id="er"></div><button class="btn" id="go">${mode === 'login' ? '登录' : '注册并进入'}</button><button class="btn ghost" id="sk">先逛逛（游客）</button></div>`;
     $$('[data-m]', a).forEach(b => b.onclick = () => { mode = b.dataset.m; paint(); });
     const submit = async () => {
       try {
         const r = await api(mode === 'login' ? '/login' : '/register', { name: $('#un').value.trim(), pass: $('#pw').value });
-        token = r.token; me = r.me; localStorage.setItem('qb_token', token); a.hidden = true; connectStream(); go('home');
+        token = r.token; me = r.me; localStorage.setItem('qb_token', token); localStorage.setItem('qb_last_user', me.name); a.hidden = true; connectStream(); go('home');
       } catch (e) { $('#er').textContent = e.message; }
     };
     $('#go').onclick = submit; $('#pw').onkeydown = e => { if (e.key === 'Enter') submit(); };
@@ -570,9 +631,11 @@ function showAuth() {
 /* ===== 启动 ===== */
 $$('#nav button').forEach(b => b.onclick = () => go(b.dataset.tab));
 (async function init() {
-  if (token) { try { me = (await api('/me')).me; connectStream(); } catch { token = ''; localStorage.removeItem('qb_token'); } }
+  let sessionExpired = false;
+  if (token) { try { me = (await api('/me')).me; connectStream(); } catch { token = ''; localStorage.removeItem('qb_token'); sessionExpired = true; } }
   recordVisit();
   render();
-  if (!STANDALONE && !me && !localStorage.getItem('qb_seen')) { localStorage.setItem('qb_seen', '1'); showAuth(); }
+  if (!STANDALONE && sessionExpired) { showAuth(); $('#er').textContent = '登录状态失效了，请先用原昵称和密码登录。'; }
+  else if (!STANDALONE && !me && !localStorage.getItem('qb_seen')) { localStorage.setItem('qb_seen', '1'); showAuth(); }
   if (!STANDALONE && 'serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 })();

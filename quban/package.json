@@ -1,6 +1,6 @@
 {
   "name": "quban",
-  "version": "2.0.0",
+  "version": "2.2.0",
   "description": "趣伴 QuBan — 聊天、AI 助手、小游戏、日常工具",
   "main": "server.js",
   "scripts": { "start": "node server.js", "dev": "node --watch server.js" },

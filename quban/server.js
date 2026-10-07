@@ -16,19 +16,29 @@ try {
 
 const PORT = process.env.PORT || 3000;
 const PUB = path.join(__dirname, 'public');
-const DB_FILE = path.join(__dirname, 'data', 'db.json');
+// Render ephemeral storage is cleared during redeploys. Set DATA_DIR to a mounted
+// persistent disk (for example /var/data) to keep accounts and messages.
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
+const DB_FILE = path.join(DATA_DIR, 'db.json');
 
 // ---------- 简易数据库（JSON 文件）----------
-let db = { users: {}, sessions: {}, messages: [], scores: {} };
+let db = { users: {}, sessions: {}, messages: [], scores: {}, games: {} };
 try { db = Object.assign(db, JSON.parse(fs.readFileSync(DB_FILE, 'utf8'))); } catch {}
+db.games = db.games || {};
 let saveTimer = null;
-function save() {
+function flushSave() {
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
+  try {
     fs.mkdirSync(path.dirname(DB_FILE), { recursive: true });
-    fs.writeFileSync(DB_FILE, JSON.stringify(db));
-  }, 300);
+    const tempFile = DB_FILE + '.tmp';
+    fs.writeFileSync(tempFile, JSON.stringify(db));
+    fs.renameSync(tempFile, DB_FILE);
+  } catch (e) { console.error('Database save failed:', e.message); }
 }
+function save() { clearTimeout(saveTimer); saveTimer = setTimeout(flushSave, 150); }
+const shutdown = () => { flushSave(); process.exit(0); };
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
 
 // ---------- 工具函数 ----------
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.json': 'application/json', '.png': 'image/png', '.ico': 'image/x-icon' };
@@ -44,6 +54,16 @@ const authUser = (req, url) => {
   const name = t && db.sessions[t];
   return name && db.users[name] ? db.users[name] : null;
 };
+const publicGame = g => ({ id: g.id, game: g.game, players: g.players, board: g.board, turn: g.turn, status: g.status, winner: g.winner, moves: g.moves, created: g.created });
+function fiveInARow(board, index, mark) {
+  const x = index % 15, y = Math.floor(index / 15);
+  for (const [dx, dy] of [[1, 0], [0, 1], [1, 1], [1, -1]]) {
+    let n = 1;
+    for (const sign of [1, -1]) { let i = 1; while (true) { const nx = x + dx * i * sign, ny = y + dy * i * sign; if (nx < 0 || ny < 0 || nx >= 15 || ny >= 15 || board[ny * 15 + nx] !== mark) break; n++; i++; } }
+    if (n >= 5) return true;
+  }
+  return false;
+}
 
 // ---------- 实时推送（SSE）----------
 const streams = new Map(); // name -> Set(res)
@@ -221,6 +241,48 @@ async function api(req, res, url) {
   if (!me) return send(res, 401, { error: '请先登录' });
 
   if (p === '/api/me') return send(res, 200, { me: { name: me.name } });
+
+  if (p === '/api/games/invites' && m === 'GET') {
+    const invites = Object.values(db.games).filter(g => g.game === 'gomoku-online' && g.status === 'pending' && g.players[1] === me.name).map(publicGame);
+    return send(res, 200, { invites });
+  }
+  if (p === '/api/games/invite' && m === 'POST') {
+    const { friend } = await readBody(req);
+    if (!friend || friend === me.name || !me.friends.includes(friend) || !db.users[friend]) return send(res, 400, { error: '只能邀请已添加的好友' });
+    const id = crypto.randomBytes(12).toString('hex');
+    const game = { id, game: 'gomoku-online', players: [me.name, friend], board: Array(225).fill(0), turn: me.name, status: 'pending', winner: null, moves: 0, created: Date.now() };
+    db.games[id] = game; save(); push(friend, 'game-invite', publicGame(game));
+    return send(res, 200, { game: publicGame(game) });
+  }
+  const gameMatch = p.match(/^\/api\/games\/([a-f0-9]+)(?:\/(accept|decline|move))?$/);
+  if (gameMatch) {
+    const game = db.games[gameMatch[1]], action = gameMatch[2];
+    if (!game || !game.players.includes(me.name)) return send(res, 404, { error: '找不到这场对局' });
+    if (!action && m === 'GET') return send(res, 200, { game: publicGame(game) });
+    if (action === 'accept' && m === 'POST') {
+      if (game.players[1] !== me.name || game.status !== 'pending') return send(res, 400, { error: '这场邀请已无法接受' });
+      game.status = 'active'; save(); game.players.forEach(n => push(n, 'game-update', publicGame(game)));
+      return send(res, 200, { game: publicGame(game) });
+    }
+    if (action === 'decline' && m === 'POST') {
+      if (game.status !== 'pending') return send(res, 400, { error: '这场邀请已处理' });
+      game.status = 'declined'; save(); game.players.forEach(n => push(n, 'game-update', publicGame(game)));
+      return send(res, 200, { game: publicGame(game) });
+    }
+    if (action === 'move' && m === 'POST') {
+      if (game.status !== 'active') return send(res, 400, { error: '对局还没有开始或已经结束' });
+      if (game.turn !== me.name) return send(res, 403, { error: '还没轮到你' });
+      const { index } = await readBody(req);
+      if (!Number.isInteger(index) || index < 0 || index >= 225 || game.board[index]) return send(res, 400, { error: '这个位置不能落子' });
+      const mark = game.players[0] === me.name ? 1 : 2;
+      game.board[index] = mark; game.moves++;
+      if (fiveInARow(game.board, index, mark)) { game.status = 'finished'; game.winner = me.name; }
+      else if (game.moves === 225) { game.status = 'finished'; game.winner = null; }
+      else game.turn = game.players.find(n => n !== me.name);
+      save(); game.players.forEach(n => push(n, 'game-update', publicGame(game)));
+      return send(res, 200, { game: publicGame(game) });
+    }
+  }
 
   if (p === '/api/stream') {
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });

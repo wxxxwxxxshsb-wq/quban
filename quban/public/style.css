@@ -10,6 +10,27 @@ button{font:inherit;color:inherit;cursor:pointer;border:none;background:none}
 input,textarea{font:inherit;color:inherit}
 :focus-visible{outline:3px solid var(--coral);outline-offset:2px}
 
+/* 首次启动：X 金属徽章显现，再以高光扫过 */
+#splash{position:fixed;inset:0;z-index:200;background:radial-gradient(ellipse at 50% 42%,#20242b 0%,#0b0d11 48%,#020304 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;color:#f5f6f8;overflow:hidden;opacity:1;transition:opacity .58s ease,transform .58s ease}
+#splash:before{content:"";position:absolute;width:min(82vw,520px);aspect-ratio:1;border:1px solid rgba(220,228,238,.12);border-radius:50%;box-shadow:0 0 100px rgba(192,205,222,.08),inset 0 0 90px rgba(192,205,222,.05)}
+#splash.leaving{opacity:0;transform:scale(1.035);pointer-events:none}
+.splash-orbit{position:absolute;width:220px;height:220px;border:1px solid rgba(222,230,240,.14);border-radius:50%;animation:orbit-turn 7s linear infinite}
+.orbit-one{width:206px;height:206px;border-top-color:rgba(255,255,255,.8);border-bottom-color:rgba(92,214,247,.56)}
+.orbit-two{width:244px;height:244px;border-style:dashed;border-color:rgba(200,210,224,.15);animation-direction:reverse;animation-duration:19s}
+.splash-core{position:relative;width:142px;height:142px;display:grid;place-items:center;animation:splash-pop .95s cubic-bezier(.2,.85,.25,1.25) both}
+.splash-core img{width:142px;height:142px;border-radius:34px;box-shadow:0 26px 70px rgba(0,0,0,.48),0 0 48px rgba(235,223,194,.12)}
+.splash-flare{position:absolute;inset:-8px;border-radius:40px;background:linear-gradient(112deg,transparent 35%,rgba(255,255,255,.8) 49%,rgba(226,205,156,.55) 52%,transparent 66%);mix-blend-mode:screen;transform:translateX(-125%) skewX(-14deg);animation:splash-shine .95s .65s ease-out both;pointer-events:none}
+.splash-wordmark{position:relative;margin-top:34px;font-size:28px;font-weight:800;letter-spacing:5px;opacity:0;animation:splash-rise .65s .4s ease-out forwards}
+.splash-wordmark span{margin-left:6px;color:#bec6d0;font-size:12px;letter-spacing:4px;vertical-align:4px}
+.splash-caption{position:relative;margin-top:6px;color:#9aabb9;font-size:9px;font-weight:700;letter-spacing:3.5px;opacity:0;animation:splash-rise .65s .55s ease-out forwards}
+.splash-progress{position:relative;width:108px;height:2px;margin-top:32px;background:rgba(238,232,216,.15);overflow:hidden;border-radius:9px}
+.splash-progress i{display:block;width:100%;height:100%;background:linear-gradient(90deg,#68717e,#d9dfe7,#83e6ff);transform:scaleX(0);transform-origin:left;animation:splash-load 1.4s .12s ease-in-out forwards}
+@keyframes splash-pop{0%{opacity:0;transform:scale(.52) rotate(-12deg);filter:blur(8px)}65%{opacity:1;transform:scale(1.05) rotate(2deg);filter:blur(0)}100%{transform:scale(1) rotate(0)}}
+@keyframes splash-shine{0%{transform:translateX(-125%) skewX(-14deg);opacity:0}18%{opacity:1}100%{transform:translateX(125%) skewX(-14deg);opacity:0}}
+@keyframes splash-rise{from{opacity:0;transform:translateY(10px);filter:blur(4px)}to{opacity:1;transform:translateY(0);filter:blur(0)}}
+@keyframes splash-load{to{transform:scaleX(1)}}
+@keyframes orbit-turn{to{transform:rotate(360deg)}}
+
 #app{display:flex;height:100%}
 #nav{width:208px;flex:none;background:var(--sun);border-right:var(--line);padding:20px 14px;display:flex;flex-direction:column;gap:8px}
 .brand{display:flex;align-items:center;gap:10px;margin-bottom:18px;padding-left:4px}
@@ -103,6 +124,16 @@ canvas{border:var(--line);border-radius:14px;background:#fff;max-width:100%;touc
 .gcard:nth-child(3n){background:linear-gradient(145deg,#fff 8%,#e7f4ff 100%)}
 .gcard .emo{filter:drop-shadow(2px 3px 0 rgba(28,35,64,.12));transition:transform .2s}
 .gcard:hover .emo{transform:rotate(-8deg) scale(1.12)}
+.online-challenge{display:flex;align-items:center;gap:18px;margin-top:18px;padding:20px 22px;border-radius:20px;background:linear-gradient(115deg,#111827,#253248);color:#F8F7F2;box-shadow:0 12px 34px rgba(16,24,39,.16);overflow:hidden;position:relative}
+.online-challenge:after{content:"";position:absolute;width:230px;height:230px;border:1px solid rgba(226,210,170,.17);border-radius:50%;right:120px;top:-150px;pointer-events:none}
+.online-mark{width:52px;height:52px;display:grid;place-items:center;border:1px solid rgba(239,225,190,.44);border-radius:16px;color:#E8D6A9;font-size:27px;flex:none}
+.online-copy{flex:1;min-width:0;position:relative;z-index:1}.online-copy .eyebrow{font-size:10px;letter-spacing:2px;color:#D7C797;opacity:.9;font-weight:800}.online-copy h2{margin:3px 0;font-size:21px;color:#fff}.online-copy p{font-size:13px;opacity:.7}.online-challenge .btn{background:#E9D7AA;border-color:#E9D7AA;color:#111827;box-shadow:none;white-space:nowrap;position:relative;z-index:1}
+.friend-picker{max-height:82vh;overflow:auto}.friend-choice{display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid rgba(28,35,64,.18);border-radius:13px;background:#fff;text-align:left}.friend-choice:hover{background:#fff4d7}.friend-choice>span{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:#E9D7AA;font-weight:900}.friend-choice b{flex:1}.friend-choice small{opacity:.6}
+.online-gview{max-width:540px}.live-pill{font-size:11px;letter-spacing:1px;color:#138A62;background:#DBF7EA;padding:5px 9px;border-radius:99px;font-weight:900}
+.online-scoreboard{display:flex;align-items:center;gap:12px;margin:18px 0 10px}.online-player{flex:1;min-width:0;display:grid;grid-template-columns:26px 1fr;column-gap:7px;align-items:center;padding:12px;border:1px solid rgba(28,35,64,.16);border-radius:15px;background:#fff}.online-player.active{border-color:#B89B58;box-shadow:0 0 0 2px rgba(215,199,151,.36);background:#fffdf7}.online-player b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.online-player small{grid-column:2;opacity:.62;font-size:11px}.piece{grid-row:1 / span 2;font-size:19px}.black-piece{color:#111827}.white-piece{color:#fff;text-shadow:0 0 1px #111827,1px 1px 2px #111827}.online-vs{font-size:11px;opacity:.5;font-weight:900}
+.online-status{min-height:42px;display:grid;place-items:center;margin:10px 0;padding:8px 12px;border-radius:12px;background:#EDF3F2;text-align:center;font-weight:800}.online-status.finished{background:#F4EBD4}
+.online-board{width:min(100%,450px);aspect-ratio:1;display:grid;grid-template-columns:repeat(15,minmax(0,1fr));gap:1px;padding:7px;border:1px solid #B28A53;border-radius:13px;background-color:#DDBB83;background-image:linear-gradient(rgba(101,68,31,.25) 1px,transparent 1px),linear-gradient(90deg,rgba(101,68,31,.25) 1px,transparent 1px);background-size:calc(100% / 15) calc(100% / 15);box-shadow:0 10px 28px rgba(57,42,20,.12);touch-action:manipulation}
+.og-cell{min-width:0;min-height:0;padding:0;display:grid;place-items:center;border-radius:50%;font-size:clamp(9px,2.5vw,17px);line-height:1;background:transparent;color:transparent;border:0}.og-cell:not(:disabled):hover{background:rgba(255,255,255,.42)}.og-cell.black{color:#111827;text-shadow:0 1px 0 rgba(255,255,255,.22)}.og-cell.white{color:#fff;text-shadow:0 1px 2px #43351f,0 0 1px #43351f}.og-cell:disabled{cursor:default;opacity:1}.online-controls{display:flex;justify-content:center;gap:10px;margin-top:14px}.online-note{text-align:center;margin-top:10px}
 .duel-head{width:min(100%,420px);display:flex;align-items:center;gap:10px}
 .duel-player{flex:1;padding:10px 12px;border:2px solid rgba(28,35,64,.18);border-radius:14px;background:#fff;display:flex;flex-direction:column;font-weight:900}
 .duel-player small{font-size:12px;opacity:.65;font-weight:600}
@@ -150,7 +181,7 @@ canvas{border:var(--line);border-radius:14px;background:#fff;max-width:100%;touc
 #auth{position:fixed;inset:0;background:var(--sun);display:grid;place-items:center;z-index:50;padding:20px}
 #auth[hidden]{display:none}
 #auth .box{width:min(100%,380px);background:var(--cream);border:var(--line);border-radius:24px;padding:28px;box-shadow:6px 6px 0 var(--ink);display:flex;flex-direction:column;gap:12px;text-align:center}
-#auth img{width:92px;height:92px;margin:0 auto;border-radius:24px;border:var(--line);animation:wob 3s ease-in-out infinite}
+#auth img{width:92px;height:92px;margin:0 auto;border-radius:24px;border:var(--line)}
 @keyframes wob{0%,100%{transform:rotate(-4deg)}50%{transform:rotate(4deg)}}
 .err{color:var(--coral);font-weight:700;min-height:1.4em;font-size:14px}
 #toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%) translateY(20px);background:var(--ink);color:#fff;padding:10px 20px;border-radius:99px;opacity:0;pointer-events:none;transition:.25s;z-index:99;font-weight:700;max-width:90vw;text-align:center}
@@ -182,5 +213,7 @@ canvas{border:var(--line);border-radius:14px;background:#fff;max-width:100%;touc
   .visit-summary{grid-template-columns:1fr 1fr;gap:8px;padding:10px}
   .visit-list{grid-column:1/-1;max-height:190px}
   .duel-head{gap:6px}.duel-player{padding:8px}.duel-player.active{transform:none}
+  .online-challenge{padding:16px;gap:12px;flex-wrap:wrap}.online-mark{width:42px;height:42px}.online-copy{min-width:calc(100% - 64px)}.online-challenge .btn{width:100%}.online-challenge:after{right:-100px}
+  .online-scoreboard{gap:6px}.online-player{padding:8px 7px;grid-template-columns:20px 1fr;column-gap:5px;font-size:13px}.online-board{width:min(100%,420px);padding:5px}.online-status{font-size:14px}
 }
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}

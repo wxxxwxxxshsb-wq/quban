@@ -1,9 +1,27 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="116" fill="#FFC63A"/>
-  <path d="M256 104C160 104 96 166 96 250c0 62 36 112 90 134l-10 62c-2 12 11 19 20 11l74-60c34-3 52-4 76-18 52-22 74-72 74-129 0-84-64-146-164-146z" fill="#1C2340"/>
-  <circle cx="196" cy="236" r="24" fill="#FFC63A"/>
-  <path d="M282 246q30-44 60 0" fill="none" stroke="#FFC63A" stroke-width="22" stroke-linecap="round"/>
-  <path d="M190 300q66 58 132 0" fill="none" stroke="#FFC63A" stroke-width="22" stroke-linecap="round"/>
-  <circle cx="404" cy="112" r="38" fill="#FF6B57"/>
-  <path d="M404 90v44M382 112h44" stroke="#FFF9EC" stroke-width="12" stroke-linecap="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="QuBan signature X emblem">
+  <defs>
+    <linearGradient id="bg" x1="60" y1="30" x2="455" y2="490" gradientUnits="userSpaceOnUse"><stop stop-color="#1b2028"/><stop offset=".58" stop-color="#0a0c10"/><stop offset="1" stop-color="#030405"/></linearGradient>
+    <linearGradient id="bright" x1="123" y1="110" x2="391" y2="405" gradientUnits="userSpaceOnUse"><stop stop-color="#fff"/><stop offset=".38" stop-color="#e6ebf1"/><stop offset=".72" stop-color="#aeb9c6"/><stop offset="1" stop-color="#f8fafc"/></linearGradient>
+    <linearGradient id="titanium" x1="393" y1="108" x2="115" y2="401" gradientUnits="userSpaceOnUse"><stop stop-color="#f2f5f8"/><stop offset=".43" stop-color="#a2adba"/><stop offset="1" stop-color="#dfe5ec"/></linearGradient>
+    <linearGradient id="ice" x1="224" y1="230" x2="286" y2="286" gradientUnits="userSpaceOnUse"><stop stop-color="#dffaff"/><stop offset=".5" stop-color="#6be4ff"/><stop offset="1" stop-color="#3499c9"/></linearGradient>
+    <radialGradient id="halo"><stop stop-color="#62d9ff" stop-opacity=".3"/><stop offset="1" stop-color="#62d9ff" stop-opacity="0"/></radialGradient>
+    <filter id="shadow" x="60" y="70" width="410" height="410" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feGaussianBlur in="SourceAlpha" stdDeviation="9"/><feOffset dy="12"/><feComponentTransfer><feFuncA type="linear" slope=".7"/></feComponentTransfer><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <path id="wide" d="m106 135 38-38 264 264-38 38z"/>
+    <path id="slim" d="m365 102 45 45-263 263-45-45z"/>
+    <path id="core" d="m256 221 35 35-35 35-35-35z"/>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <rect x="1" y="1" width="510" height="510" rx="111" fill="none" stroke="#fff" stroke-opacity=".08" stroke-width="2"/>
+  <circle cx="256" cy="256" r="78" fill="url(#halo)"/>
+  <g filter="url(#shadow)">
+    <use href="#wide" transform="translate(0 12)" fill="#3b424c"/>
+    <use href="#slim" transform="translate(0 12)" fill="#343b45"/>
+    <use href="#wide" fill="url(#bright)"/>
+    <use href="#slim" fill="url(#titanium)"/>
+    <path d="m116 136 28-28 238 238-24 24z" fill="#fff" opacity=".2"/>
+    <path d="m369 113 28 28-231 231-28-28z" fill="#fff" opacity=".12"/>
+  </g>
+  <use href="#core" fill="#07090c" stroke="#48525e" stroke-width="2"/>
+  <path d="m256 229 27 27-27 27-27-27z" fill="none" stroke="url(#ice)" stroke-width="3"/>
+  <path d="m372 112 17-5-5 17" fill="none" stroke="#8cecff" stroke-opacity=".9" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>

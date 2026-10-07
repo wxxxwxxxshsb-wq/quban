@@ -4,12 +4,20 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>趣伴 QuBan</title>
-<meta name="theme-color" content="#FFC63A">
+<meta name="theme-color" content="#050608">
 <link rel="icon" href="/logo.svg">
+<link rel="apple-touch-icon" href="/icon-512.png">
 <link rel="manifest" href="/manifest.json">
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
+<div id="splash" aria-hidden="true">
+  <div class="splash-orbit orbit-one"></div><div class="splash-orbit orbit-two"></div>
+  <div class="splash-core"><img src="/logo.svg" alt=""><span class="splash-flare"></span></div>
+  <div class="splash-wordmark">趣伴 <span>X · QUBAN</span></div>
+  <div class="splash-caption">MAKE EVERY MOMENT COUNT</div>
+  <div class="splash-progress"><i></i></div>
+</div>
 <div id="app">
   <nav id="nav">
     <div class="brand"><img src="/logo.svg" alt="趣伴"><span>趣伴</span></div>
@@ -23,6 +31,7 @@
 </div>
 <div id="auth" hidden></div>
 <div id="toast"></div>
+<script>(()=>{const s=document.getElementById('splash');try{if(localStorage.getItem('qb_intro_seen')){s.remove();return}localStorage.setItem('qb_intro_seen','1')}catch{}setTimeout(()=>{if(s){s.classList.add('leaving');setTimeout(()=>s.remove(),620)}},1750)})()</script>
 <script src="/app.js"></script>
 </body>
 </html>

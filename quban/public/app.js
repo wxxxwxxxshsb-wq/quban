@@ -601,7 +601,7 @@ function viewMe() {
       <div class="task"><span class="sp">安装到桌面 / 手机主屏幕</span><span class="sub">浏览器菜单 → 安装「趣伴」</span></div>
       <div class="task"><span class="sp">清除聊天记录（小伴）</span><button class="btn sm ghost" id="clr">清除</button></div>
       <div class="task"><span class="sp">${me ? '退出登录' : '登录 / 注册，解锁好友聊天和排行榜'}</span><button class="btn sm" id="lo">${me ? '退出' : '登录'}</button></div></div>
-    <p class="sub" style="margin-top:20px">趣伴 QuBan v2.2 · 金属 X 标志、好友实时对战</p></div>`;
+    <p class="sub" style="margin-top:20px">趣伴 QuBan v2.2.2 · 金属 X 标志、好友实时对战</p></div>`;
   $('#clr').onclick = () => { store.set('aihist', [AI_HELLO]); toast('已清除'); };
   $('#lo').onclick = () => { if (me) { localStorage.removeItem('qb_token'); token = ''; me = null; if (es) es.close(); go('home'); showAuth(); } else showAuth(); };
 }

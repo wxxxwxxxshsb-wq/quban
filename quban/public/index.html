@@ -12,7 +12,7 @@
 </head>
 <body>
 <div id="splash" aria-hidden="true">
-  <div class="splash-orbit orbit-one"></div><div class="splash-orbit orbit-two"></div>
+  <div class="splash-aura"></div><div class="splash-ring"></div>
   <div class="splash-core"><img src="/logo.svg" alt=""><span class="splash-flare"></span></div>
   <div class="splash-wordmark">趣伴 <span>X · QUBAN</span></div>
   <div class="splash-caption">MAKE EVERY MOMENT COUNT</div>
@@ -31,7 +31,7 @@
 </div>
 <div id="auth" hidden></div>
 <div id="toast"></div>
-<script>(()=>{const s=document.getElementById('splash');try{if(localStorage.getItem('qb_intro_seen')){s.remove();return}localStorage.setItem('qb_intro_seen','1')}catch{}setTimeout(()=>{if(s){s.classList.add('leaving');setTimeout(()=>s.remove(),620)}},1750)})()</script>
+<script>(()=>{const s=document.getElementById('splash');setTimeout(()=>{if(s){s.classList.add('leaving');setTimeout(()=>s.remove(),620)}},2250)})()</script>
 <script src="/app.js"></script>
 </body>
 </html>

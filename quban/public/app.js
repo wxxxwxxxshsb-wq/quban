@@ -22,6 +22,19 @@ const store = {
   set(k, v) { localStorage.setItem(this.k(k), JSON.stringify(v)); }
 };
 
+/* ---------- 每日打开记录（只保存在当前设备/浏览器） ---------- */
+function recordVisit() {
+  const rows = store.get('visits', []);
+  const stamp = new Date();
+  const day = today();
+  let row = rows.find(x => x.date === day);
+  if (!row) { row = { date: day, count: 0, first: '', last: '' }; rows.push(row); }
+  row.count++;
+  if (!row.first) row.first = stamp.toISOString();
+  row.last = stamp.toISOString();
+  store.set('visits', rows.slice(-180));
+}
+
 /* ---------- 网络 ---------- */
 async function api(path, body) {
   if (STANDALONE) throw new Error('这个功能（AI 助手、好友聊天、排行榜）需要联网版，单文件版暂不支持');
@@ -69,6 +82,7 @@ const GAMES = [
   { id: 'memory', name: '翻牌记忆', emo: '🃏', desc: '找出 8 对相同的图案', how: '点击翻牌', fn: memory },
   { id: 'whack', name: '打地鼠', emo: '🐹', desc: '30 秒内打得越多越好', how: '点击地鼠', fn: whack },
   { id: 'gomoku', name: '五子棋', emo: '⚫', desc: '和 AI 比谁先连成五子', how: '点击落子，你执黑先手', fn: gomoku },
+  { id: 'gomoku2', name: '双人五子棋', emo: '🧑‍🤝‍🧑', desc: '两个人轮流落子，同屏来一盘', how: '黑白双方轮流点击落子', fn: gomoku2 },
   { id: 'react', name: '反应力测试', emo: '⚡', desc: '变绿的瞬间点下去', how: '点击方块', fn: react }
 ];
 const dailyGame = () => { let h = 0; for (const c of today()) h = (h * 31 + c.charCodeAt(0)) >>> 0; return GAMES[h % GAMES.length]; };
@@ -128,11 +142,13 @@ function viewHome() {
     <div class="grid">
       <div class="card sky tile quick" data-go="chat"><span class="big">🤖</span><b>问问小伴</b><span class="sub">写作、计算、做决定</span></div>
       <div class="card tile quick" data-go="tools"><span class="big">🍅</span><b>番茄钟</b><span class="sub">25 分钟专注一下</span></div>
+      <div class="card sky tile quick" data-tool="note"><span class="big">📝</span><b>写备忘</b><span class="sub">灵感和小事，随手记下来</span></div>
       <div class="card tile quick" data-go="games"><span class="big">🎮</span><b>来一局</b><span class="sub">${GAMES.length} 个小游戏</span></div>
     </div></div>`;
   $('#ck').onclick = checkin;
   $('#dg').onclick = () => openGame(dg.id);
   $$('[data-go]').forEach(e => e.onclick = () => go(e.dataset.go));
+  $$('[data-tool]').forEach(e => e.onclick = () => { tool = e.dataset.tool; go('tools'); });
 }
 
 /* ===== 聊天 ===== */
@@ -386,6 +402,38 @@ function gomoku(box, end) {
   draw(); return () => { over = true; };
 }
 
+function gomoku2(box, end) {
+  const N = 15, C = 28, P = 16, W = N * C;
+  const bd = Array.from({ length: N }, () => Array(N).fill(0));
+  let moves = 0, over = false, turn = 1;
+  box.innerHTML = `<div class="duel-head"><div class="duel-player active" id="p1">⚫ 黑棋 <small>玩家 1</small></div><div class="duel-vs">VS</div><div class="duel-player" id="p2">⚪ 白棋 <small>玩家 2</small></div></div><div class="score-row" id="st">黑棋先手，把手机/电脑交给对方轮流下</div><canvas width="${W}" height="${W}" aria-label="双人五子棋棋盘"></canvas><button class="btn ghost" id="undo">↶ 悔一步</button>`;
+  const cv = $('canvas', box), cx = cv.getContext('2d'), history = [];
+  const draw = last => {
+    cx.fillStyle = '#F4CC86'; cx.fillRect(0, 0, W, W); cx.strokeStyle = '#71522C'; cx.lineWidth = 1;
+    for (let i = 0; i < N; i++) { cx.beginPath(); cx.moveTo(P + i * (C - 1.1), P); cx.lineTo(P + i * (C - 1.1), W - P); cx.moveTo(P, P + i * (C - 1.1)); cx.lineTo(W - P, P + i * (C - 1.1)); cx.stroke(); }
+    [[3,3],[11,3],[7,7],[3,11],[11,11]].forEach(([x,y]) => { cx.beginPath(); cx.arc(P + x * (C - 1.1), P + y * (C - 1.1), 3, 0, 7); cx.fillStyle = '#71522C'; cx.fill(); });
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) if (bd[y][x]) { cx.beginPath(); cx.arc(P + x * (C - 1.1), P + y * (C - 1.1), 11, 0, 7); cx.fillStyle = bd[y][x] === 1 ? '#1C2340' : '#fff'; cx.fill(); cx.strokeStyle = '#1C2340'; cx.stroke(); if (last && last[0] === x && last[1] === y) { cx.beginPath(); cx.arc(P + x * (C - 1.1), P + y * (C - 1.1), 3, 0, 7); cx.fillStyle = '#FF6B57'; cx.fill(); } }
+  };
+  const won = (x, y, p) => [[1,0],[0,1],[1,1],[1,-1]].some(([dx,dy]) => {
+    let n = 1;
+    for (const dir of [1,-1]) { let i = 1; while (x + dx * i * dir >= 0 && x + dx * i * dir < N && y + dy * i * dir >= 0 && y + dy * i * dir < N && bd[y + dy * i * dir][x + dx * i * dir] === p) { n++; i++; } }
+    return n >= 5;
+  });
+  const status = () => { $('#st', box).textContent = turn === 1 ? '轮到黑棋 · 玩家 1' : '轮到白棋 · 玩家 2'; $('#p1', box).classList.toggle('active', turn === 1); $('#p2', box).classList.toggle('active', turn === 2); };
+  cv.onclick = e => {
+    if (over) return;
+    const r = cv.getBoundingClientRect(), k = W / r.width;
+    const x = Math.round(((e.clientX - r.left) * k - P) / (C - 1.1)), y = Math.round(((e.clientY - r.top) * k - P) / (C - 1.1));
+    if (x < 0 || y < 0 || x >= N || y >= N || bd[y][x]) return;
+    bd[y][x] = turn; history.push([x,y,turn]); moves++; draw([x,y]);
+    if (won(x,y,turn)) { over = true; return end(turn === 1 ? 100 : 90, `${turn === 1 ? '黑棋' : '白棋'}赢了！${moves} 手分出胜负`); }
+    if (moves === N * N) { over = true; return end(50, '棋盘满了，平局！'); }
+    turn = turn === 1 ? 2 : 1; status();
+  };
+  $('#undo', box).onclick = () => { if (over || !history.length) return; const [x,y,p] = history.pop(); bd[y][x] = 0; turn = p; moves--; draw(); status(); };
+  draw(); status(); return () => { over = true; };
+}
+
 function react(box, end) {
   let state = 'idle', t0 = 0, timer; box.innerHTML = `<div class="react" id="rb" style="background:var(--sky)">点击开始</div><div class="sub">成绩 = 1000 − 反应毫秒数，越高越好</div>`;
   const rb = $('#rb', box);
@@ -399,9 +447,11 @@ function react(box, end) {
 
 /* ===== 工具 ===== */
 let tool = 'todo';
+let noteFilter = '';
+let activeNoteId = null;
 function viewTools() {
-  $('#main').innerHTML = `<div class="wrap"><h1>工具</h1><div class="tabs">${[['todo', '✅ 待办'], ['note', '📝 便签'], ['calc', '🧮 计算器'], ['pomo', '🍅 番茄钟']].map(([k, n]) => `<button class="pill ${tool === k ? 'on' : ''}" data-t="${k}">${n}</button>`).join('')}</div><div id="tb"></div></div>`;
-  $$('.pill').forEach(p => p.onclick = () => { tool = p.dataset.t; viewTools(); });
+  $('#main').innerHTML = `<div class="wrap"><h1>工具</h1><div class="tabs">${[['todo', '✅ 待办'], ['note', '📝 备忘录'], ['calc', '🧮 计算器'], ['pomo', '🍅 番茄钟']].map(([k, n]) => `<button class="pill ${tool === k ? 'on' : ''}" data-t="${k}">${n}</button>`).join('')}</div><div id="tb"></div></div>`;
+  $$('[data-t]').forEach(p => p.onclick = () => { tool = p.dataset.t; viewTools(); });
   ({ todo: toolTodo, note: toolNote, calc: toolCalc, pomo: toolPomo })[tool]($('#tb'));
 }
 function toolTodo(el) {
@@ -418,8 +468,36 @@ function toolTodo(el) {
   $$('[data-d]', el).forEach(b => b.onclick = () => { store.set('todos', todos.filter(x => x.id != b.dataset.d)); toolTodo(el); });
 }
 function toolNote(el) {
-  el.innerHTML = `<textarea id="nt" rows="14" placeholder="随手记点什么，自动保存"></textarea>`;
-  const t = $('#nt'); t.value = store.get('note', ''); t.oninput = () => store.set('note', t.value);
+  let notes = store.get('notes', null);
+  if (!Array.isArray(notes)) {
+    const old = store.get('note', '');
+    notes = old.trim() ? [{ id: Date.now(), title: '我的第一条备忘', content: old, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), pinned: false }] : [];
+    store.set('notes', notes);
+  }
+  const query = noteFilter.trim().toLowerCase();
+  const filtered = notes.filter(n => !query || `${n.title} ${n.content}`.toLowerCase().includes(query)).sort((a,b) => Number(b.pinned) - Number(a.pinned) || String(b.updatedAt).localeCompare(String(a.updatedAt)));
+  if (!filtered.some(n => String(n.id) === String(activeNoteId))) activeNoteId = filtered[0]?.id ?? null;
+  const active = notes.find(n => String(n.id) === String(activeNoteId));
+  const dateLabel = value => value ? new Date(value).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' }) : '';
+  el.innerHTML = `<div class="memo-toolbar"><input id="noteSearch" type="text" placeholder="搜标题或内容" value="${esc(noteFilter)}"><button class="btn" id="noteAdd">＋ 新建备忘</button></div>
+    <div class="memo-layout"><aside class="memo-list">${filtered.length ? filtered.map(n => `<button class="memo-item ${String(n.id) === String(activeNoteId) ? 'selected' : ''}" data-note="${esc(n.id)}"><div class="memo-item-top"><b>${n.pinned ? '📌 ' : ''}${esc(n.title || '无标题')}</b><small>${dateLabel(n.updatedAt)}</small></div><span>${esc((n.content || '').replace(/\s+/g, ' ').slice(0, 86)) || '空白备忘'}</span></button>`).join('') : `<div class="memo-empty">${query ? '没有找到这条备忘' : '还没有备忘，记下第一个灵感吧 ✨'}</div>`}</aside>
+    <section class="memo-editor">${active ? `<div class="memo-edit-head"><span class="sub" id="noteSaved">自动保存到这台设备</span><div class="row"><button class="btn sm ghost" id="notePin">${active.pinned ? '📌 已置顶' : '📍 置顶'}</button><button class="btn sm ghost" id="noteDelete">删除</button></div></div><input type="text" id="noteTitle" maxlength="80" placeholder="给备忘起个标题" value="${esc(active.title || '')}"><textarea id="noteContent" rows="14" maxlength="12000" placeholder="写下想法、计划、灵感……内容会自动保存">${esc(active.content || '')}</textarea><div class="memo-foot"><span>创建于 ${dateLabel(active.createdAt)}</span><span id="noteCount">${(active.content || '').length} / 12000</span></div>` : `<div class="memo-empty memo-empty-large">📝<b>${query ? '换个关键词试试' : '随手记下，之后再整理'}</b><span>备忘只保存在当前设备和浏览器中。</span></div>`}</section></div>`;
+  $('#noteSearch').oninput = e => { noteFilter = e.target.value; toolNote(el); const f = $('#noteSearch'); f.focus(); f.setSelectionRange(f.value.length, f.value.length); };
+  $('#noteAdd').onclick = () => { const now = new Date().toISOString(); const n = { id: `${Date.now()}-${Math.random().toString(36).slice(2,7)}`, title: '', content: '', createdAt: now, updatedAt: now, pinned: false }; notes.unshift(n); store.set('notes', notes); activeNoteId = n.id; noteFilter = ''; toolNote(el); $('#noteTitle').focus(); };
+  $$('[data-note]', el).forEach(b => b.onclick = () => { activeNoteId = b.dataset.note; toolNote(el); });
+  if (!active) return;
+  let saveTimer;
+  const save = () => {
+    active.title = $('#noteTitle').value.trimStart(); active.content = $('#noteContent').value; active.updatedAt = new Date().toISOString(); store.set('notes', notes);
+    $('#noteCount').textContent = `${active.content.length} / 12000`;
+    $('#noteSaved').textContent = '已保存';
+    const card = $(`[data-note="${CSS.escape(String(active.id))}"]`, el);
+    if (card) { const title = $('b', card); title.textContent = `${active.pinned ? '📌 ' : ''}${active.title || '无标题'}`; $('span', card).textContent = active.content.replace(/\s+/g, ' ').slice(0, 86) || '空白备忘'; }
+    clearTimeout(saveTimer); saveTimer = setTimeout(() => { if ($('#noteSaved')) $('#noteSaved').textContent = '自动保存到这台设备'; }, 1300);
+  };
+  $('#noteTitle').oninput = save; $('#noteContent').oninput = save;
+  $('#notePin').onclick = () => { active.pinned = !active.pinned; store.set('notes', notes); toolNote(el); };
+  $('#noteDelete').onclick = () => { if (!confirm('删除这条备忘？')) return; store.set('notes', notes.filter(n => String(n.id) !== String(active.id))); activeNoteId = null; toolNote(el); };
 }
 function toolCalc(el) {
   const keys = ['C', '(', ')', '÷', '7', '8', '9', '×', '4', '5', '6', '−', '1', '2', '3', '+', '0', '.', '⌫', '='];
@@ -452,14 +530,17 @@ function toolPomo(el) {
 /* ===== 我的 ===== */
 function viewMe() {
   const s = stats(), lv = level(s.points), nx = LEVELS.find(l => l[0] > s.points), ach = achievements();
+  const visits = store.get('visits', []).slice().sort((a, b) => b.date.localeCompare(a.date));
+  const openCount = visits.reduce((sum, v) => sum + (v.count || 0), 0);
   $('#main').innerHTML = `<div class="wrap"><div class="row"><span class="av" style="width:64px;height:64px;font-size:26px">${me ? esc(me.name[0]) : '游'}</span><div><h1>${me ? esc(me.name) : '游客'}</h1><div class="sub">${lv[1]} · ${s.points} 积分${nx ? `（距「${nx[1]}」还差 ${nx[0] - s.points}）` : ''}</div></div></div>
+    <h2>每天来看看 · 打开日志</h2><div class="visit-summary"><div class="visit-total"><strong>${openCount}</strong><span>累计打开</span></div><div class="visit-days"><strong>${visits.length}</strong><span>记录天数</span></div><div class="visit-list">${visits.length ? visits.slice(0, 10).map(v => `<div class="visit-row"><span class="visit-dot"></span><b>${v.date === today() ? '今天' : esc(v.date)}</b><span class="sp"></span><span>${v.count} 次打开</span><small>${v.first ? new Date(v.first).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) : ''}</small></div>`).join('') : '<div class="sub">从今天开始，帮你记下每次来趣伴的日子。</div>'}</div></div>
     <h2>成就 ${ach.filter(a => a.ok).length}/${ach.length}</h2>
     <div class="badges">${ach.map(a => `<div class="ach ${a.ok ? '' : 'lock'}"><div class="e">${a.e}</div><b>${a.n}</b></div>`).join('')}</div>
     <h2>设置</h2><div class="card">
       <div class="task"><span class="sp">安装到桌面 / 手机主屏幕</span><span class="sub">浏览器菜单 → 安装「趣伴」</span></div>
       <div class="task"><span class="sp">清除聊天记录（小伴）</span><button class="btn sm ghost" id="clr">清除</button></div>
       <div class="task"><span class="sp">${me ? '退出登录' : '登录 / 注册，解锁好友聊天和排行榜'}</span><button class="btn sm" id="lo">${me ? '退出' : '登录'}</button></div></div>
-    <p class="sub" style="margin-top:20px">趣伴 QuBan v1.0 · 电脑版</p></div>`;
+    <p class="sub" style="margin-top:20px">趣伴 QuBan v2.0 · 备忘录、每日足迹、双人游戏</p></div>`;
   $('#clr').onclick = () => { store.set('aihist', [AI_HELLO]); toast('已清除'); };
   $('#lo').onclick = () => { if (me) { localStorage.removeItem('qb_token'); token = ''; me = null; if (es) es.close(); go('home'); showAuth(); } else showAuth(); };
 }
@@ -490,6 +571,7 @@ function showAuth() {
 $$('#nav button').forEach(b => b.onclick = () => go(b.dataset.tab));
 (async function init() {
   if (token) { try { me = (await api('/me')).me; connectStream(); } catch { token = ''; localStorage.removeItem('qb_token'); } }
+  recordVisit();
   render();
   if (!STANDALONE && !me && !localStorage.getItem('qb_seen')) { localStorage.setItem('qb_seen', '1'); showAuth(); }
   if (!STANDALONE && 'serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});

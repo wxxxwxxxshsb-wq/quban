@@ -97,6 +97,17 @@ canvas{border:var(--line);border-radius:14px;background:#fff;max-width:100%;touc
 .holes{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;width:min(100%,360px)}
 .hole{aspect-ratio:1;border:var(--line);border-radius:50%;background:#7a5230;display:grid;place-items:center;font-size:48px;overflow:hidden}
 .react{width:min(100%,420px);height:260px;border:var(--line);border-radius:18px;display:grid;place-items:center;font-size:24px;font-weight:900;text-align:center;padding:16px;box-shadow:var(--pop)}
+.gcard{min-height:190px;position:relative;overflow:hidden;background:linear-gradient(145deg,#fff 10%,#fff9ec 100%)}
+.gcard:nth-child(3n+1){background:linear-gradient(145deg,#fff 8%,#fff1c9 100%)}
+.gcard:nth-child(3n+2){background:linear-gradient(145deg,#fff 8%,#e2fff3 100%)}
+.gcard:nth-child(3n){background:linear-gradient(145deg,#fff 8%,#e7f4ff 100%)}
+.gcard .emo{filter:drop-shadow(2px 3px 0 rgba(28,35,64,.12));transition:transform .2s}
+.gcard:hover .emo{transform:rotate(-8deg) scale(1.12)}
+.duel-head{width:min(100%,420px);display:flex;align-items:center;gap:10px}
+.duel-player{flex:1;padding:10px 12px;border:2px solid rgba(28,35,64,.18);border-radius:14px;background:#fff;display:flex;flex-direction:column;font-weight:900}
+.duel-player small{font-size:12px;opacity:.65;font-weight:600}
+.duel-player.active{border-color:var(--ink);background:var(--sun);box-shadow:3px 3px 0 var(--ink);transform:translateY(-2px)}
+.duel-vs{font-size:12px;font-weight:900;opacity:.6}
 
 /* 工具 */
 .tabs{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0}
@@ -104,6 +115,29 @@ canvas{border:var(--line);border-radius:14px;background:#fff;max-width:100%;touc
 .pill.on{background:var(--sun);box-shadow:3px 3px 0 var(--ink)}
 .todo{display:flex;align-items:center;gap:10px;padding:10px 4px;border-bottom:2px dashed rgba(28,35,64,.2)}
 .todo.done span{text-decoration:line-through;opacity:.5}
+.memo-toolbar{display:flex;gap:10px;margin:14px 0;align-items:center}
+.memo-toolbar input{flex:1;min-width:0}
+.memo-layout{display:grid;grid-template-columns:minmax(220px, .82fr) minmax(0, 1.6fr);gap:14px;align-items:stretch}
+.memo-list,.memo-editor{min-height:380px;background:#fff;border:var(--line);border-radius:18px;box-shadow:var(--pop);padding:12px}
+.memo-list{display:flex;flex-direction:column;gap:8px;max-height:620px;overflow:auto}
+.memo-item{width:100%;text-align:left;padding:12px;border:2px solid transparent;border-radius:13px;background:#fff9ec;display:flex;flex-direction:column;gap:7px;transition:transform .12s,border-color .12s}
+.memo-item:hover{transform:translateY(-1px);border-color:rgba(28,35,64,.45)}
+.memo-item.selected{background:#fff1c9;border-color:var(--ink);box-shadow:2px 2px 0 var(--ink)}
+.memo-item-top{display:flex;align-items:center;gap:8px}.memo-item-top b{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.memo-item small,.memo-foot{font-size:12px;opacity:.6;white-space:nowrap}
+.memo-item span{font-size:13px;opacity:.72;line-height:1.45;overflow-wrap:anywhere}
+.memo-editor{display:flex;flex-direction:column;gap:12px;background:linear-gradient(150deg,#fff 0%,#fffdf7 100%)}
+.memo-editor textarea{min-height:260px;flex:1;resize:vertical;line-height:1.75}
+.memo-edit-head,.memo-foot{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.memo-empty{padding:22px 12px;text-align:center;opacity:.66;font-size:14px}
+.memo-empty-large{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;font-size:32px}
+.memo-empty-large b{font-size:18px}.memo-empty-large span{font-size:13px}
+.visit-summary{display:grid;grid-template-columns:140px 140px minmax(0,1fr);gap:12px;align-items:stretch;padding:14px;background:linear-gradient(135deg,#fff9ec,#fff);border:var(--line);border-radius:18px;box-shadow:var(--pop)}
+.visit-total,.visit-days{display:flex;flex-direction:column;justify-content:center;align-items:center;border-radius:14px;background:var(--sun);padding:12px}
+.visit-days{background:#dff8ec}.visit-total strong,.visit-days strong{font-size:32px;line-height:1.2}.visit-total span,.visit-days span{font-size:13px;opacity:.7}
+.visit-list{max-height:210px;overflow:auto;padding:0 4px}
+.visit-row{display:flex;align-items:center;gap:8px;padding:7px 4px;border-bottom:1px dashed rgba(28,35,64,.18);font-size:13px}
+.visit-row:last-child{border:0}.visit-row small{font-size:11px;opacity:.55}.visit-dot{width:9px;height:9px;border-radius:50%;background:var(--mint);box-shadow:0 0 0 3px rgba(60,207,160,.18)}
 .calc{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;max-width:320px}
 .calc .btn{padding:14px 0;font-size:20px}
 .cd{font-size:72px;font-weight:900;text-align:center;font-variant-numeric:tabular-nums}
@@ -114,7 +148,6 @@ canvas{border:var(--line);border-radius:14px;background:#fff;max-width:100%;touc
 
 /* 登录 */
 #auth{position:fixed;inset:0;background:var(--sun);display:grid;place-items:center;z-index:50;padding:20px}
-#auth[hidden]{display:none}
 #auth .box{width:min(100%,380px);background:var(--cream);border:var(--line);border-radius:24px;padding:28px;box-shadow:6px 6px 0 var(--ink);display:flex;flex-direction:column;gap:12px;text-align:center}
 #auth img{width:92px;height:92px;margin:0 auto;border-radius:24px;border:var(--line);animation:wob 3s ease-in-out infinite}
 @keyframes wob{0%,100%{transform:rotate(-4deg)}50%{transform:rotate(4deg)}}
@@ -138,5 +171,15 @@ canvas{border:var(--line);border-radius:14px;background:#fff;max-width:100%;touc
   .chat.open .cpane{display:flex}
   .back{display:inline-flex}
   #toast{bottom:100px}
+  .memo-toolbar{align-items:stretch}.memo-toolbar .btn{padding:8px 12px;white-space:nowrap}
+  .memo-layout{grid-template-columns:1fr;gap:10px}
+  .memo-list{min-height:0;max-height:220px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-content:start}
+  .memo-empty{grid-column:1/-1}
+  .memo-editor{min-height:360px}
+  .memo-editor textarea{min-height:210px}
+  .memo-edit-head{align-items:flex-start;flex-direction:column}
+  .visit-summary{grid-template-columns:1fr 1fr;gap:8px;padding:10px}
+  .visit-list{grid-column:1/-1;max-height:190px}
+  .duel-head{gap:6px}.duel-player{padding:8px}.duel-player.active{transform:none}
 }
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}

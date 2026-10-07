@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>趣伴 QuBan</title>
+<meta name="theme-color" content="#FFC63A">
+<link rel="icon" href="/logo.svg">
+<link rel="manifest" href="/manifest.json">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div id="app">
+  <nav id="nav">
+    <div class="brand"><img src="/logo.svg" alt="趣伴"><span>趣伴</span></div>
+    <button data-tab="home"><i>🏠</i><span>今天</span></button>
+    <button data-tab="chat"><i>💬</i><span>聊天</span><em id="dot" hidden></em></button>
+    <button data-tab="games"><i>🎮</i><span>游戏</span></button>
+    <button data-tab="tools"><i>🧰</i><span>工具</span></button>
+    <button data-tab="me"><i>🙂</i><span>我的</span></button>
+  </nav>
+  <main id="main"></main>
+</div>
+<div id="auth" hidden></div>
+<div id="toast"></div>
+<script src="/app.js"></script>
+</body>
+</html>

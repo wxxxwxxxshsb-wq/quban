@@ -1,0 +1,668 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>趣伴 QuBan</title>
+<meta name="theme-color" content="#FFC63A">
+<link rel="icon" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MTIgNTEyIj4KICA8cmVjdCB3aWR0aD0iNTEyIiBoZWlnaHQ9IjUxMiIgcng9IjExNiIgZmlsbD0iI0ZGQzYzQSIvPgogIDxwYXRoIGQ9Ik0yNTYgMTA0QzE2MCAxMDQgOTYgMTY2IDk2IDI1MGMwIDYyIDM2IDExMiA5MCAxMzRsLTEwIDYyYy0yIDEyIDExIDE5IDIwIDExbDc0LTYwYzM0LTMgNTItNCA3Ni0xOCA1Mi0yMiA3NC03MiA3NC0xMjkgMC04NC02NC0xNDYtMTY0LTE0NnoiIGZpbGw9IiMxQzIzNDAiLz4KICA8Y2lyY2xlIGN4PSIxOTYiIGN5PSIyMzYiIHI9IjI0IiBmaWxsPSIjRkZDNjNBIi8+CiAgPHBhdGggZD0iTTI4MiAyNDZxMzAtNDQgNjAgMCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjRkZDNjNBIiBzdHJva2Utd2lkdGg9IjIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiLz4KICA8cGF0aCBkPSJNMTkwIDMwMHE2NiA1OCAxMzIgMCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjRkZDNjNBIiBzdHJva2Utd2lkdGg9IjIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiLz4KICA8Y2lyY2xlIGN4PSI0MDQiIGN5PSIxMTIiIHI9IjM4IiBmaWxsPSIjRkY2QjU3Ii8+CiAgPHBhdGggZD0iTTQwNCA5MHY0NE0zODIgMTEyaDQ0IiBzdHJva2U9IiNGRkY5RUMiIHN0cm9rZS13aWR0aD0iMTIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgo8L3N2Zz4K">
+<style>
+:root{
+  --sun:#FFC63A; --ink:#1C2340; --cream:#FFF9EC; --coral:#FF6B57; --mint:#3CCFA0; --sky:#7CC4FF;
+  --line:2.5px solid var(--ink); --pop:4px 4px 0 var(--ink);
+  --font:"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{font-family:var(--font);background:var(--cream);color:var(--ink);font-size:16px;line-height:1.55}
+button{font:inherit;color:inherit;cursor:pointer;border:none;background:none}
+input,textarea{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--coral);outline-offset:2px}
+
+#app{display:flex;height:100%}
+#nav{width:208px;flex:none;background:var(--sun);border-right:var(--line);padding:20px 14px;display:flex;flex-direction:column;gap:8px}
+.brand{display:flex;align-items:center;gap:10px;margin-bottom:18px;padding-left:4px}
+.brand img{width:44px;height:44px;border-radius:12px;border:var(--line)}
+.brand span{font-size:26px;font-weight:900;letter-spacing:2px}
+#nav button{position:relative;display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:14px;font-weight:700;font-size:16px;border:2.5px solid transparent;text-align:left}
+#nav button i{font-style:normal;font-size:20px}
+#nav button:hover{background:rgba(255,255,255,.4)}
+#nav button.on{background:var(--cream);border-color:var(--ink);box-shadow:3px 3px 0 var(--ink)}
+#nav em{position:absolute;right:12px;top:12px;width:11px;height:11px;border-radius:50%;background:var(--coral);border:2px solid var(--ink)}
+#main{flex:1;overflow:auto;padding:28px 32px 40px;position:relative}
+.wrap{max-width:900px;margin:0 auto}
+
+h1{font-size:30px;font-weight:900;line-height:1.25}
+h2{font-size:19px;font-weight:800;margin:26px 0 12px}
+.sub{opacity:.7;font-size:14px}
+
+.card{background:#fff;border:var(--line);border-radius:18px;padding:16px 18px;box-shadow:var(--pop)}
+.card.sun{background:var(--sun)} .card.mint{background:var(--mint)} .card.coral{background:var(--coral);color:#fff} .card.sky{background:var(--sky)}
+.grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fill,minmax(190px,1fr))}
+.row{display:flex;align-items:center;gap:12px}
+.sp{flex:1}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:9px 18px;border:var(--line);border-radius:12px;background:var(--sun);font-weight:800;box-shadow:3px 3px 0 var(--ink);transition:transform .08s,box-shadow .08s}
+.btn:hover{transform:translate(-1px,-1px);box-shadow:4px 4px 0 var(--ink)}
+.btn:active{transform:translate(3px,3px);box-shadow:0 0 0 var(--ink)}
+.btn.ghost{background:#fff} .btn.coral{background:var(--coral);color:#fff} .btn.mint{background:var(--mint)}
+.btn[disabled]{opacity:.5;pointer-events:none}
+.btn.sm{padding:5px 12px;font-size:14px}
+input[type=text],input[type=password],textarea{width:100%;padding:10px 14px;border:var(--line);border-radius:12px;background:#fff;outline:none}
+input:focus,textarea:focus{box-shadow:3px 3px 0 var(--sun)}
+
+/* 首页 */
+.hero{display:flex;gap:18px;align-items:stretch;flex-wrap:wrap;margin-top:18px}
+.hero .card{flex:1;min-width:250px}
+.streak{font-size:46px;font-weight:900;line-height:1}
+.task{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:2px dashed rgba(28,35,64,.2)}
+.task:last-child{border:none}
+.chk{width:24px;height:24px;border:var(--line);border-radius:8px;display:grid;place-items:center;font-size:14px;background:#fff;flex:none}
+.chk.done{background:var(--mint)}
+.quick{display:flex;flex-direction:column;gap:6px;align-items:flex-start;text-align:left;width:100%}
+.quick b{font-size:18px} .quick .big{font-size:34px}
+.tile{cursor:pointer;transition:transform .1s}
+.tile:hover{transform:translate(-2px,-2px)}
+
+/* 聊天 */
+.chat{display:flex;height:calc(100vh - 68px);border:var(--line);border-radius:20px;overflow:hidden;box-shadow:var(--pop);background:#fff;max-width:1000px;margin:0 auto}
+.clist{width:260px;flex:none;border-right:var(--line);display:flex;flex-direction:column;background:var(--cream)}
+.clist .head{padding:12px;border-bottom:var(--line)}
+.clist .items{flex:1;overflow:auto}
+.ci{display:flex;align-items:center;gap:10px;padding:12px 14px;width:100%;text-align:left;border-bottom:2px solid rgba(28,35,64,.1)}
+.ci:hover{background:#fff} .ci.on{background:var(--sun)}
+.av{width:40px;height:40px;border-radius:50%;border:var(--line);display:grid;place-items:center;font-weight:900;background:var(--sky);flex:none;position:relative}
+.av.ai{background:var(--sun);font-size:20px}
+.av .on{position:absolute;right:-3px;bottom:-3px;width:12px;height:12px;border-radius:50%;background:var(--mint);border:2px solid var(--ink)}
+.badge{background:var(--coral);color:#fff;border-radius:99px;font-size:12px;padding:0 7px;border:2px solid var(--ink);font-weight:800}
+.cpane{flex:1;display:flex;flex-direction:column;min-width:0}
+.chead{padding:12px 16px;border-bottom:var(--line);font-weight:800;display:flex;align-items:center;gap:10px}
+.msgs{flex:1;overflow:auto;padding:16px;display:flex;flex-direction:column;gap:10px;background:var(--cream)}
+.bub{max-width:76%;padding:9px 14px;border:var(--line);border-radius:16px 16px 16px 4px;background:#fff;word-break:break-word;white-space:pre-wrap}
+.bub.me{align-self:flex-end;background:var(--sun);border-radius:16px 16px 4px 16px}
+.bub.typing{opacity:.6}
+.sendbar{display:flex;gap:10px;padding:12px;border-top:var(--line)}
+.empty{margin:auto;text-align:center;opacity:.75;padding:24px}
+.back{display:none}
+
+/* 游戏 */
+.gcard{display:flex;flex-direction:column;gap:6px;cursor:pointer;transition:transform .1s}
+.gcard:hover{transform:translate(-2px,-2px)}
+.gcard .emo{font-size:40px}
+.tag{display:inline-block;background:var(--coral);color:#fff;border:2px solid var(--ink);border-radius:99px;font-size:12px;padding:0 9px;font-weight:800}
+.gview{max-width:560px;margin:0 auto}
+.gbox{position:relative;margin-top:14px;display:flex;flex-direction:column;align-items:center;gap:12px;touch-action:none;user-select:none}
+.score-row{font-size:18px}
+.over{position:absolute;inset:0;background:rgba(255,249,236,.94);border:var(--line);border-radius:18px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;z-index:5}
+.over .big{font-size:56px;font-weight:900;line-height:1}
+.b2048{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:8px;background:var(--ink);border-radius:16px;width:min(100%,380px);aspect-ratio:1}
+.t{display:grid;place-items:center;border-radius:10px;background:rgba(255,255,255,.12);font-weight:900;font-size:clamp(20px,6vw,30px);color:var(--ink)}
+.t2{background:#FFF1C9}.t4{background:#FFE08A}.t8{background:#FFB35C}.t16{background:#FF9250}.t32{background:#FF7A5C}.t64{background:#FF5C5C}
+.t128{background:#B6F0D8}.t256{background:#8BE6C4}.t512{background:#5FDBB0}.t1024{background:#7CC4FF;font-size:clamp(16px,5vw,24px)}.t2048{background:#fff;box-shadow:0 0 0 3px var(--sun) inset;font-size:clamp(16px,5vw,24px)}
+canvas{border:var(--line);border-radius:14px;background:#fff;max-width:100%;touch-action:none}
+.mem{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;width:min(100%,380px)}
+.mc{aspect-ratio:1;border:var(--line);border-radius:14px;background:var(--sun);font-size:34px;display:grid;place-items:center;box-shadow:3px 3px 0 var(--ink)}
+.mc.open{background:#fff} .mc.ok{background:var(--mint)}
+.holes{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;width:min(100%,360px)}
+.hole{aspect-ratio:1;border:var(--line);border-radius:50%;background:#7a5230;display:grid;place-items:center;font-size:48px;overflow:hidden}
+.react{width:min(100%,420px);height:260px;border:var(--line);border-radius:18px;display:grid;place-items:center;font-size:24px;font-weight:900;text-align:center;padding:16px;box-shadow:var(--pop)}
+
+/* 工具 */
+.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0}
+.pill{padding:6px 16px;border:var(--line);border-radius:99px;background:#fff;font-weight:800}
+.pill.on{background:var(--sun);box-shadow:3px 3px 0 var(--ink)}
+.todo{display:flex;align-items:center;gap:10px;padding:10px 4px;border-bottom:2px dashed rgba(28,35,64,.2)}
+.todo.done span{text-decoration:line-through;opacity:.5}
+.calc{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;max-width:320px}
+.calc .btn{padding:14px 0;font-size:20px}
+.cd{font-size:72px;font-weight:900;text-align:center;font-variant-numeric:tabular-nums}
+.badges{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+.ach{text-align:center;padding:12px 8px;border:var(--line);border-radius:16px;background:#fff}
+.ach.lock{opacity:.4;filter:grayscale(1)}
+.ach .e{font-size:30px}
+
+/* 登录 */
+#auth{position:fixed;inset:0;background:var(--sun);display:grid;place-items:center;z-index:50;padding:20px}
+#auth .box{width:min(100%,380px);background:var(--cream);border:var(--line);border-radius:24px;padding:28px;box-shadow:6px 6px 0 var(--ink);display:flex;flex-direction:column;gap:12px;text-align:center}
+#auth img{width:92px;height:92px;margin:0 auto;border-radius:24px;border:var(--line);animation:wob 3s ease-in-out infinite}
+@keyframes wob{0%,100%{transform:rotate(-4deg)}50%{transform:rotate(4deg)}}
+.err{color:var(--coral);font-weight:700;min-height:1.4em;font-size:14px}
+#toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%) translateY(20px);background:var(--ink);color:#fff;padding:10px 20px;border-radius:99px;opacity:0;pointer-events:none;transition:.25s;z-index:99;font-weight:700;max-width:90vw;text-align:center}
+#toast.show{opacity:1;transform:translateX(-50%)}
+
+@media(max-width:760px){
+  #app{flex-direction:column-reverse}
+  #nav{width:100%;flex-direction:row;border-right:none;border-top:var(--line);padding:6px 8px calc(6px + env(safe-area-inset-bottom));gap:2px;justify-content:space-around}
+  .brand{display:none}
+  #nav button{flex-direction:column;gap:0;padding:4px 10px;font-size:12px;border-radius:12px;align-items:center}
+  #nav button i{font-size:22px}
+  #nav em{right:8px;top:2px}
+  #main{padding:18px 16px 24px}
+  h1{font-size:24px}
+  .chat{height:calc(100vh - 150px);border-radius:16px}
+  .clist{width:100%;border-right:none}
+  .cpane{display:none}
+  .chat.open .clist{display:none}
+  .chat.open .cpane{display:flex}
+  .back{display:inline-flex}
+  #toast{bottom:100px}
+}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+</style>
+</head>
+<body>
+<div id="app">
+  <nav id="nav">
+    <div class="brand"><img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MTIgNTEyIj4KICA8cmVjdCB3aWR0aD0iNTEyIiBoZWlnaHQ9IjUxMiIgcng9IjExNiIgZmlsbD0iI0ZGQzYzQSIvPgogIDxwYXRoIGQ9Ik0yNTYgMTA0QzE2MCAxMDQgOTYgMTY2IDk2IDI1MGMwIDYyIDM2IDExMiA5MCAxMzRsLTEwIDYyYy0yIDEyIDExIDE5IDIwIDExbDc0LTYwYzM0LTMgNTItNCA3Ni0xOCA1Mi0yMiA3NC03MiA3NC0xMjkgMC04NC02NC0xNDYtMTY0LTE0NnoiIGZpbGw9IiMxQzIzNDAiLz4KICA8Y2lyY2xlIGN4PSIxOTYiIGN5PSIyMzYiIHI9IjI0IiBmaWxsPSIjRkZDNjNBIi8+CiAgPHBhdGggZD0iTTI4MiAyNDZxMzAtNDQgNjAgMCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjRkZDNjNBIiBzdHJva2Utd2lkdGg9IjIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiLz4KICA8cGF0aCBkPSJNMTkwIDMwMHE2NiA1OCAxMzIgMCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjRkZDNjNBIiBzdHJva2Utd2lkdGg9IjIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiLz4KICA8Y2lyY2xlIGN4PSI0MDQiIGN5PSIxMTIiIHI9IjM4IiBmaWxsPSIjRkY2QjU3Ii8+CiAgPHBhdGggZD0iTTQwNCA5MHY0NE0zODIgMTEyaDQ0IiBzdHJva2U9IiNGRkY5RUMiIHN0cm9rZS13aWR0aD0iMTIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgo8L3N2Zz4K" alt="趣伴"><span>趣伴</span></div>
+    <button data-tab="home"><i>🏠</i><span>今天</span></button>
+    <button data-tab="chat"><i>💬</i><span>聊天</span><em id="dot" hidden></em></button>
+    <button data-tab="games"><i>🎮</i><span>游戏</span></button>
+    <button data-tab="tools"><i>🧰</i><span>工具</span></button>
+    <button data-tab="me"><i>🙂</i><span>我的</span></button>
+  </nav>
+  <main id="main"></main>
+</div>
+<div id="auth" hidden></div>
+<div id="toast"></div>
+<script>
+/* 趣伴 QuBan 1.0 前端 */
+'use strict';
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const fmt = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+const today = () => fmt(new Date());
+const yesterday = () => fmt(new Date(Date.now() - 864e5));
+const pick = a => a[Math.random() * a.length | 0];
+
+const STANDALONE = location.protocol === 'file:';
+let token = localStorage.getItem('qb_token') || '';
+let me = null;           // { name } 或 null（游客）
+let tab = 'home';
+let stopGame = null;     // 当前游戏的清理函数
+let es = null;           // SSE
+
+/* ---------- 本地存储（按账号分开） ---------- */
+const store = {
+  k: k => 'qb_' + (me ? me.name : 'guest') + '_' + k,
+  get(k, d) { try { const v = localStorage.getItem(this.k(k)); return v ? JSON.parse(v) : d; } catch { return d; } },
+  set(k, v) { localStorage.setItem(this.k(k), JSON.stringify(v)); }
+};
+
+/* ---------- 网络 ---------- */
+async function api(path, body) {
+  if (STANDALONE) throw new Error('这个功能（AI 助手、好友聊天、排行榜）需要联网版，单文件版暂不支持');
+  const opt = { headers: { 'Content-Type': 'application/json' } };
+  if (token) opt.headers.Authorization = 'Bearer ' + token;
+  if (body !== undefined) { opt.method = 'POST'; opt.body = JSON.stringify(body); }
+  const r = await fetch('/api' + path, opt);
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || '请求失败');
+  return j;
+}
+function toast(t) {
+  const el = $('#toast'); el.textContent = t; el.classList.add('show');
+  clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove('show'), 2200);
+}
+
+/* ---------- 积分 / 连续打卡 / 每日任务 ---------- */
+const LEVELS = [[0, '新朋友'], [60, '常客'], [200, '老伙伴'], [500, '趣味达人'], [1000, '趣伴传说']];
+function stats() {
+  const s = store.get('stats', { points: 0, streak: 0, last: '', plays: 0, todosDone: 0, pomos: 0, aiAsks: 0, best: {}, daily: {} });
+  if (s.daily.date !== today()) s.daily = { date: today(), play: false, chat: false, todo: false, bonus: false };
+  return s;
+}
+function addPoints(n, why) {
+  const s = stats(); s.points += n; store.set('stats', s);
+  toast(`+${n} 积分${why ? '：' + why : ''}`);
+}
+function mark(flag) {
+  const s = stats();
+  if (!s.daily[flag]) { s.daily[flag] = true; store.set('stats', s); if (s.daily.play && s.daily.chat && s.daily.todo && !s.daily.bonus) { s.daily.bonus = true; store.set('stats', s); addPoints(20, '今日任务全部完成'); } }
+}
+const level = p => [...LEVELS].reverse().find(l => p >= l[0]);
+function checkin() {
+  const s = stats();
+  if (s.last === today()) return toast('今天已经打过卡啦');
+  s.streak = s.last === yesterday() ? s.streak + 1 : 1; s.last = today();
+  const gain = 10 + Math.min(s.streak, 7) * 2; s.points += gain; store.set('stats', s);
+  toast(`打卡成功！连续 ${s.streak} 天，+${gain} 积分`); render();
+}
+
+/* ---------- 游戏登记 ---------- */
+const GAMES = [
+  { id: 'g2048', name: '2048', emo: '🔢', desc: '滑动合并，凑出 2048', how: '方向键 / 滑动', fn: g2048 },
+  { id: 'snake', name: '贪吃蛇', emo: '🐍', desc: '越吃越长，别撞墙', how: '方向键 / WASD / 滑动', fn: snake },
+  { id: 'memory', name: '翻牌记忆', emo: '🃏', desc: '找出 8 对相同的图案', how: '点击翻牌', fn: memory },
+  { id: 'whack', name: '打地鼠', emo: '🐹', desc: '30 秒内打得越多越好', how: '点击地鼠', fn: whack },
+  { id: 'gomoku', name: '五子棋', emo: '⚫', desc: '和 AI 比谁先连成五子', how: '点击落子，你执黑先手', fn: gomoku },
+  { id: 'react', name: '反应力测试', emo: '⚡', desc: '变绿的瞬间点下去', how: '点击方块', fn: react }
+];
+const dailyGame = () => { let h = 0; for (const c of today()) h = (h * 31 + c.charCodeAt(0)) >>> 0; return GAMES[h % GAMES.length]; };
+
+/* ---------- 成就 ---------- */
+function achievements() {
+  const s = stats();
+  return [
+    { e: '🌱', n: '第一次打卡', ok: !!s.last },
+    { e: '🔥', n: '连续 3 天', ok: s.streak >= 3 },
+    { e: '🏆', n: '连续 7 天', ok: s.streak >= 7 },
+    { e: '🎮', n: '玩过 5 局游戏', ok: s.plays >= 5 },
+    { e: '🤖', n: '问过小伴 5 次', ok: s.aiAsks >= 5 },
+    { e: '✅', n: '完成 10 个待办', ok: s.todosDone >= 10 },
+    { e: '🍅', n: '完成一个番茄钟', ok: s.pomos >= 1 },
+    { e: '💯', n: '积分破 200', ok: s.points >= 200 }
+  ];
+}
+
+/* ---------- 路由 / 渲染 ---------- */
+function go(t) {
+  if (stopGame) { stopGame(); stopGame = null; }
+  tab = t; chat.open = false; render();
+}
+function render() {
+  $$('#nav button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
+  ({ home: viewHome, chat: viewChat, games: viewGames, tools: viewTools, me: viewMe })[tab]();
+  $('#main').scrollTop = 0;
+}
+
+/* ===== 首页 ===== */
+function viewHome() {
+  const s = stats(), dg = dailyGame(), d = s.daily, hr = new Date().getHours();
+  const hello = hr < 6 ? '夜深了' : hr < 11 ? '早上好' : hr < 14 ? '中午好' : hr < 18 ? '下午好' : '晚上好';
+  const todos = store.get('todos', []).filter(t => !t.done);
+  const chk = s.last === today();
+  $('#main').innerHTML = `<div class="wrap">
+    <h1>${hello}，${me ? esc(me.name) : '朋友'}</h1>
+    <p class="sub">${new Date().toLocaleDateString('zh-CN', { dateStyle: 'full' })}</p>
+    <div class="hero">
+      <div class="card sun">
+        <div class="row"><div><div class="streak">${s.streak}</div><div>天连续打卡</div></div><div class="sp"></div>
+          <button class="btn ${chk ? 'ghost' : 'coral'}" id="ck">${chk ? '今日已打卡 ✓' : '打卡 +积分'}</button></div>
+        <p class="sub" style="margin-top:10px">${level(s.points)[1]} · ${s.points} 积分　每天来一次，连续越久奖励越多</p>
+      </div>
+      <div class="card">
+        <b>今日任务</b>
+        ${[['play', '玩一局游戏'], ['chat', '和小伴或好友聊一句'], ['todo', '完成一个待办']].map(([k, t]) => `<div class="task"><span class="chk ${d[k] ? 'done' : ''}">${d[k] ? '✓' : ''}</span>${t}</div>`).join('')}
+        <p class="sub" style="margin-top:6px">三项全做完，额外 +20 积分</p>
+      </div>
+    </div>
+    <h2>今日挑战</h2>
+    <div class="card mint tile" id="dg"><div class="row"><span style="font-size:44px">${dg.emo}</span><div><b style="font-size:20px">${dg.name}</b><div>${dg.desc}。今天第一次玩额外 +15 积分</div></div><div class="sp"></div><span class="btn">开玩</span></div></div>
+    <h2>待办（${todos.length}）</h2>
+    <div class="card">${todos.length ? todos.slice(0, 4).map(t => `<div class="task">○ ${esc(t.t)}</div>`).join('') : '<div class="sub">暂时没有待办。去「工具」里加一个，或者直接让小伴帮你安排。</div>'}</div>
+    <h2>快捷入口</h2>
+    <div class="grid">
+      <div class="card sky tile quick" data-go="chat"><span class="big">🤖</span><b>问问小伴</b><span class="sub">写作、计算、做决定</span></div>
+      <div class="card tile quick" data-go="tools"><span class="big">🍅</span><b>番茄钟</b><span class="sub">25 分钟专注一下</span></div>
+      <div class="card tile quick" data-go="games"><span class="big">🎮</span><b>来一局</b><span class="sub">${GAMES.length} 个小游戏</span></div>
+    </div></div>`;
+  $('#ck').onclick = checkin;
+  $('#dg').onclick = () => openGame(dg.id);
+  $$('[data-go]').forEach(e => e.onclick = () => go(e.dataset.go));
+}
+
+/* ===== 聊天 ===== */
+const chat = { peer: 'ai', friends: [], unread: {}, msgs: {}, open: false, busy: false };
+const AI_HELLO = { role: 'assistant', content: '我是小伴 👋 你可以让我算数、写文案、翻译、解释概念、帮你安排今天的待办，或者只是聊聊天。' };
+const aiHist = () => store.get('aihist', [AI_HELLO]);
+const fmtMsg = t => esc(t).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+
+async function loadFriends() {
+  if (!me) return;
+  try { chat.friends = (await api('/friends')).friends; } catch {}
+}
+async function viewChat() {
+  if (me) await loadFriends();
+  const list = chat.friends;
+  $('#main').innerHTML = `<div class="chat ${chat.open ? 'open' : ''}">
+    <aside class="clist">
+      <div class="head"><b>聊天</b></div>
+      <div class="items">
+        <button class="ci ${chat.peer === 'ai' ? 'on' : ''}" data-p="ai"><span class="av ai">🤖</span><div class="sp"><b>小伴</b><div class="sub">AI 助手 · 随时在线</div></div></button>
+        ${list.map(f => `<button class="ci ${chat.peer === f.name ? 'on' : ''}" data-p="${esc(f.name)}"><span class="av">${esc(f.name[0])}${f.online ? '<i class="on"></i>' : ''}</span><div class="sp"><b>${esc(f.name)}</b></div>${chat.unread[f.name] ? `<span class="badge">${chat.unread[f.name]}</span>` : ''}</button>`).join('')}
+        ${me ? '' : '<div class="empty sub">登录后才能加好友聊天</div>'}
+      </div>
+      ${me ? '<div class="head" style="border-top:var(--line);border-bottom:none"><div class="row"><input type="text" id="addf" placeholder="输入好友昵称"><button class="btn sm" id="addb">加好友</button></div></div>' : '<div class="head" style="border-top:var(--line);border-bottom:none"><button class="btn" id="lg" style="width:100%">登录 / 注册</button></div>'}
+    </aside>
+    <section class="cpane" id="cp"></section></div>`;
+  $$('.ci').forEach(b => b.onclick = () => { chat.peer = b.dataset.p; chat.unread[chat.peer] = 0; chat.open = true; updateDot(); viewChat(); });
+  if ($('#addb')) $('#addb').onclick = async () => {
+    const n = $('#addf').value.trim(); if (!n) return;
+    try { await api('/friends/add', { name: n }); toast('已添加好友 ' + n); viewChat(); } catch (e) { toast(e.message); }
+  };
+  if ($('#lg')) $('#lg').onclick = showAuth;
+  renderPane();
+}
+async function renderPane() {
+  const cp = $('#cp'); if (!cp) return;
+  const isAI = chat.peer === 'ai';
+  if (!isAI && !me) { chat.peer = 'ai'; return renderPane(); }
+  let msgs;
+  if (isAI) msgs = aiHist().map(m => ({ me: m.role === 'user', text: m.content }));
+  else {
+    if (!chat.msgs[chat.peer]) { try { chat.msgs[chat.peer] = (await api('/messages?with=' + encodeURIComponent(chat.peer))).messages; } catch { chat.msgs[chat.peer] = []; } }
+    msgs = chat.msgs[chat.peer].map(m => ({ me: m.from === me.name, text: m.text }));
+  }
+  cp.innerHTML = `<div class="chead"><button class="btn sm ghost back" id="bk">←</button><span class="av ${isAI ? 'ai' : ''}" style="width:32px;height:32px">${isAI ? '🤖' : esc(chat.peer[0])}</span>${isAI ? '小伴' : esc(chat.peer)}</div>
+    <div class="msgs" id="ms">${msgs.map(m => `<div class="bub ${m.me ? 'me' : ''}">${fmtMsg(m.text)}</div>`).join('') || '<div class="empty">还没有消息，打个招呼吧 👋</div>'}</div>
+    <div class="sendbar"><input type="text" id="inp" placeholder="${isAI ? '问小伴任何事…' : '说点什么…'}" autocomplete="off"><button class="btn" id="snd">发送</button></div>`;
+  const ms = $('#ms'); ms.scrollTop = ms.scrollHeight;
+  $('#bk').onclick = () => { chat.open = false; viewChat(); };
+  const inp = $('#inp'); inp.onkeydown = e => { if (e.key === 'Enter' && !e.isComposing) send(); };
+  $('#snd').onclick = send;
+  if (innerWidth > 760) inp.focus();
+}
+function appendBub(text, mine, cls = '') {
+  const ms = $('#ms'); if (!ms) return null;
+  const e = ms.querySelector('.empty'); if (e) e.remove();
+  const b = document.createElement('div'); b.className = 'bub ' + (mine ? 'me ' : '') + cls; b.innerHTML = fmtMsg(text);
+  ms.appendChild(b); ms.scrollTop = ms.scrollHeight; return b;
+}
+async function send() {
+  const inp = $('#inp'); const text = inp.value.trim(); if (!text || chat.busy) return;
+  inp.value = '';
+  if (chat.peer === 'ai') {
+    chat.busy = true;
+    const h = aiHist(); h.push({ role: 'user', content: text }); store.set('aihist', h.slice(-60));
+    appendBub(text, true); const wait = appendBub('小伴想一想…', false, 'typing');
+    const s = stats(); s.aiAsks++; store.set('stats', s); mark('chat');
+    const todos = store.get('todos', []).filter(t => !t.done).map(t => t.t).join('；') || '无';
+    try {
+      const r = await api('/ai', { messages: h.slice(-20), context: `现在是 ${new Date().toLocaleString('zh-CN')}。用户的未完成待办：${todos}` });
+      h.push({ role: 'assistant', content: r.text }); store.set('aihist', h.slice(-60));
+      if (wait) { wait.classList.remove('typing'); wait.innerHTML = fmtMsg(r.text); }
+    } catch (e) { if (wait) wait.textContent = (STANDALONE ? '' : '网络不通：') + e.message; }
+    chat.busy = false; const ms = $('#ms'); if (ms) ms.scrollTop = ms.scrollHeight;
+  } else {
+    try {
+      const { message } = await api('/messages', { to: chat.peer, text });
+      (chat.msgs[chat.peer] = chat.msgs[chat.peer] || []).push(message); appendBub(text, true); mark('chat');
+    } catch (e) { toast(e.message); }
+  }
+}
+function updateDot() { $('#dot').hidden = !Object.values(chat.unread).some(n => n > 0); }
+function connectStream() {
+  if (es) es.close(); if (!me) return;
+  es = new EventSource('/api/stream?token=' + token);
+  es.addEventListener('msg', e => {
+    const m = JSON.parse(e.data);
+    (chat.msgs[m.from] = chat.msgs[m.from] || []).push(m);
+    if (tab === 'chat' && chat.peer === m.from) appendBub(m.text, false);
+    else { chat.unread[m.from] = (chat.unread[m.from] || 0) + 1; updateDot(); toast(`${m.from}：${m.text.slice(0, 20)}`); if (tab === 'chat') viewChat(); }
+  });
+  es.addEventListener('friend', e => { toast(JSON.parse(e.data).name + ' 加你为好友了'); if (tab === 'chat') viewChat(); });
+}
+
+/* ===== 游戏大厅 ===== */
+function viewGames() {
+  const s = stats(), dg = dailyGame();
+  $('#main').innerHTML = `<div class="wrap"><h1>游戏</h1><p class="sub">每个游戏都有排行榜，和朋友比一比</p>
+    <div class="grid" style="margin-top:18px">${GAMES.map(g => `<div class="card gcard tile" data-g="${g.id}"><span class="emo">${g.emo}</span><b style="font-size:19px">${g.name}${g.id === dg.id ? ' <span class="tag">今日挑战</span>' : ''}</b><span class="sub">${g.desc}</span><span class="sub">最佳：${s.best[g.id] ?? '—'}</span></div>`).join('')}</div>
+    <p class="sub" style="margin-top:22px">更多游戏正在路上：数独、俄罗斯方块、你画我猜（好友对战）……</p></div>`;
+  $$('[data-g]').forEach(e => e.onclick = () => openGame(e.dataset.g));
+}
+function openGame(id) {
+  if (stopGame) { stopGame(); stopGame = null; }
+  tab = 'games'; $$('#nav button').forEach(b => b.classList.toggle('on', b.dataset.tab === 'games'));
+  const g = GAMES.find(x => x.id === id);
+  $('#main').innerHTML = `<div class="gview"><div class="row"><button class="btn sm ghost" id="gb">← 返回</button><h1 style="font-size:24px">${g.emo} ${g.name}</h1><div class="sp"></div><button class="btn sm ghost" id="rk">排行榜</button></div>
+    <p class="sub" style="margin-top:6px">操作：${g.how}　最佳：<span id="best">${stats().best[id] ?? '—'}</span></p><div class="gbox" id="gx"></div></div>`;
+  $('#gb').onclick = () => go('games');
+  $('#rk').onclick = () => showRank(g);
+  const run = () => {
+    const box = $('#gx'); box.innerHTML = '';
+    stopGame = g.fn(box, (score, msg) => finish(g, box, score, msg, run));
+  };
+  run();
+}
+async function finish(g, box, score, msg, again) {
+  const s = stats(); s.plays++;
+  const isBest = score > (s.best[g.id] || 0); if (isBest) s.best[g.id] = score;
+  const dg = dailyGame(); let gain = 5;
+  if (g.id === dg.id && !s.daily.bonus15) { s.daily.bonus15 = true; gain += 15; }
+  store.set('stats', s); addPoints(gain, '完成一局'); mark('play');
+  $('#best') && ($('#best').textContent = s.best[g.id]);
+  if (me) api('/score', { game: g.id, score }).catch(() => {});
+  const o = document.createElement('div'); o.className = 'over';
+  o.innerHTML = `<div>${msg || '游戏结束'}</div><div class="big">${score}</div><div class="sub">${isBest ? '🎉 新纪录！' : '最佳 ' + s.best[g.id]}</div><div class="row"><button class="btn" id="ag">再来一局</button><button class="btn ghost" id="rk2">排行榜</button></div>`;
+  box.appendChild(o);
+  $('#ag').onclick = again; $('#rk2').onclick = () => showRank(g);
+}
+async function showRank(g) {
+  let rows = [];
+  try { rows = (await api('/rank?game=' + g.id)).rows; } catch {}
+  const w = document.createElement('div'); w.id = 'auth';
+  w.innerHTML = `<div class="box" style="text-align:left"><h1 style="font-size:22px">${g.emo} ${g.name} 排行榜</h1>${rows.length ? rows.map((r, i) => `<div class="task"><b style="width:28px">${['🥇', '🥈', '🥉'][i] || i + 1}</b><span class="sp">${esc(r.name)}${me && r.name === me.name ? '（你）' : ''}</span><b>${r.score}</b></div>`).join('') : '<p class="sub">还没人上榜。登录后玩一局，你就是第一名。</p>'}<button class="btn" id="x">关闭</button></div>`;
+  document.body.appendChild(w); $('#x', w).onclick = () => w.remove();
+}
+
+/* ---------- 6 个游戏 ---------- */
+const swipe = (el, cb) => {
+  let sx, sy;
+  const st = e => { const t = e.touches[0]; sx = t.clientX; sy = t.clientY; };
+  const en = e => { const t = e.changedTouches[0], dx = t.clientX - sx, dy = t.clientY - sy; if (Math.max(Math.abs(dx), Math.abs(dy)) < 24) return; cb(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 2 : 0) : (dy > 0 ? 3 : 1)); };
+  el.addEventListener('touchstart', st, { passive: true }); el.addEventListener('touchend', en, { passive: true });
+};
+const KEYDIR = { ArrowLeft: 0, ArrowUp: 1, ArrowRight: 2, ArrowDown: 3, a: 0, w: 1, d: 2, s: 3, A: 0, W: 1, D: 2, S: 3 };
+
+function g2048(box, end) {
+  let b = Array(16).fill(0), score = 0, dead = false;
+  const add = () => { const e = b.map((v, i) => v ? -1 : i).filter(i => i >= 0); if (e.length) b[pick(e)] = Math.random() < .9 ? 2 : 4; };
+  add(); add();
+  const draw = () => { box.innerHTML = `<div class="score-row">分数 <b>${score}</b></div><div class="b2048">${b.map(v => `<div class="t t${v}">${v || ''}</div>`).join('')}</div>`; };
+  const line = a => { const r = a.filter(Boolean); let s = 0; for (let i = 0; i < r.length - 1; i++) if (r[i] === r[i + 1]) { r[i] *= 2; s += r[i]; r.splice(i + 1, 1); } while (r.length < 4) r.push(0); return [r, s]; };
+  const can = () => b.some((v, i) => !v || (i % 4 < 3 && v === b[i + 1]) || (i < 12 && v === b[i + 4]));
+  const move = d => {
+    if (dead) return; let moved = false; const nb = b.slice();
+    for (let k = 0; k < 4; k++) {
+      const idx = [0, 1, 2, 3].map(j => d === 0 ? k * 4 + j : d === 2 ? k * 4 + 3 - j : d === 1 ? j * 4 + k : (3 - j) * 4 + k);
+      const [r, s] = line(idx.map(i => b[i])); score += s;
+      idx.forEach((i, j) => { if (nb[i] !== r[j]) moved = true; nb[i] = r[j]; });
+    }
+    if (!moved) return; b = nb; add(); draw();
+    if (!can()) { dead = true; end(score, '没有可以移动的格子了'); }
+  };
+  const key = e => { if (e.key in KEYDIR) { e.preventDefault(); move(KEYDIR[e.key]); } };
+  addEventListener('keydown', key); swipe(box, move); draw();
+  return () => removeEventListener('keydown', key);
+}
+
+function snake(box, end) {
+  const N = 20, C = 18; let sn = [[10, 10], [9, 10], [8, 10]], dir = 2, nd = 2, food, score = 0, timer, dead = false;
+  box.innerHTML = `<div class="score-row">分数 <b id="sc">0</b></div><canvas width="${N * C}" height="${N * C}"></canvas>`;
+  const cv = $('canvas', box), cx = cv.getContext('2d');
+  const place = () => { do food = [Math.random() * N | 0, Math.random() * N | 0]; while (sn.some(p => p[0] === food[0] && p[1] === food[1])); };
+  place();
+  const draw = () => {
+    cx.fillStyle = '#FFF9EC'; cx.fillRect(0, 0, N * C, N * C);
+    cx.fillStyle = '#FF6B57'; cx.beginPath(); cx.arc(food[0] * C + C / 2, food[1] * C + C / 2, C / 2 - 2, 0, 7); cx.fill();
+    sn.forEach((p, i) => { cx.fillStyle = i ? '#3CCFA0' : '#1C2340'; cx.fillRect(p[0] * C + 1, p[1] * C + 1, C - 2, C - 2); });
+  };
+  const D = [[-1, 0], [0, -1], [1, 0], [0, 1]];
+  const tick = () => {
+    if ((nd + 2) % 4 !== dir) dir = nd;
+    const h = [sn[0][0] + D[dir][0], sn[0][1] + D[dir][1]];
+    if (h[0] < 0 || h[1] < 0 || h[0] >= N || h[1] >= N || sn.some(p => p[0] === h[0] && p[1] === h[1])) { dead = true; clearInterval(timer); return end(score, '撞到了'); }
+    sn.unshift(h);
+    if (h[0] === food[0] && h[1] === food[1]) { score += 10; $('#sc', box).textContent = score; place(); clearInterval(timer); timer = setInterval(tick, Math.max(55, 130 - score / 2)); } else sn.pop();
+    draw();
+  };
+  const key = e => { if (e.key in KEYDIR) { e.preventDefault(); nd = KEYDIR[e.key]; } };
+  addEventListener('keydown', key); swipe(box, d => nd = d); draw(); timer = setInterval(tick, 130);
+  return () => { clearInterval(timer); removeEventListener('keydown', key); };
+}
+
+function memory(box, end) {
+  const em = ['🍎', '🐶', '🚀', '🎸', '🌈', '🍕', '⚽', '🐱']; const cards = [...em, ...em].sort(() => Math.random() - .5);
+  let first = null, lock = false, moves = 0, found = 0; const t0 = Date.now();
+  box.innerHTML = `<div class="score-row">步数 <b id="mv">0</b></div><div class="mem">${cards.map((_, i) => `<button class="mc" data-i="${i}">?</button>`).join('')}</div>`;
+  $$('.mc', box).forEach(c => c.onclick = () => {
+    if (lock || c.classList.contains('open') || c.classList.contains('ok')) return;
+    c.classList.add('open'); c.textContent = cards[c.dataset.i];
+    if (!first) { first = c; return; }
+    moves++; $('#mv', box).textContent = moves;
+    if (cards[first.dataset.i] === cards[c.dataset.i]) {
+      first.classList.add('ok'); c.classList.add('ok'); first = null; found++;
+      if (found === 8) { const sec = (Date.now() - t0) / 1000 | 0; end(Math.max(10, 1000 - moves * 20 - sec * 5), `${moves} 步 · ${sec} 秒全部配对`); }
+    } else { lock = true; const a = first; first = null; setTimeout(() => { a.classList.remove('open'); c.classList.remove('open'); a.textContent = c.textContent = '?'; lock = false; }, 650); }
+  });
+  return () => {};
+}
+
+function whack(box, end) {
+  let score = 0, left = 30, cur = -1, over = false;
+  box.innerHTML = `<div class="score-row">得分 <b id="sc">0</b>　剩余 <b id="tm">30</b> 秒</div><div class="holes">${Array.from({ length: 9 }, (_, i) => `<button class="hole" data-i="${i}"></button>`).join('')}</div>`;
+  const holes = $$('.hole', box);
+  holes.forEach(h => h.onclick = () => { if (+h.dataset.i === cur) { score += 10; $('#sc', box).textContent = score; h.textContent = '💥'; cur = -1; } });
+  const show = () => { if (cur >= 0) holes[cur].textContent = ''; cur = Math.random() * 9 | 0; holes[cur].textContent = '🐹'; };
+  const t1 = setInterval(show, 700);
+  const t2 = setInterval(() => { left--; $('#tm', box).textContent = left; if (left <= 0) { clearInterval(t1); clearInterval(t2); if (!over) { over = true; end(score, '时间到'); } } }, 1000);
+  return () => { clearInterval(t1); clearInterval(t2); over = true; };
+}
+
+function gomoku(box, end) {
+  const N = 15, C = 28, P = 16, W = N * C; const bd = Array.from({ length: N }, () => Array(N).fill(0)); let moves = 0, over = false, busy = false;
+  box.innerHTML = `<div class="score-row" id="st">轮到你（黑）</div><canvas width="${W}" height="${W}"></canvas>`;
+  const cv = $('canvas', box), cx = cv.getContext('2d');
+  const draw = () => {
+    cx.fillStyle = '#FFD98A'; cx.fillRect(0, 0, W, W); cx.strokeStyle = '#1C2340'; cx.lineWidth = 1;
+    for (let i = 0; i < N; i++) { cx.beginPath(); cx.moveTo(P + i * (C - 1.1), P); cx.lineTo(P + i * (C - 1.1), W - P); cx.moveTo(P, P + i * (C - 1.1)); cx.lineTo(W - P, P + i * (C - 1.1)); cx.stroke(); }
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) if (bd[y][x]) { cx.beginPath(); cx.arc(P + x * (C - 1.1), P + y * (C - 1.1), 11, 0, 7); cx.fillStyle = bd[y][x] === 1 ? '#1C2340' : '#fff'; cx.fill(); cx.stroke(); }
+  };
+  const DIRS = [[1, 0], [0, 1], [1, 1], [1, -1]];
+  const get = (x, y) => x < 0 || y < 0 || x >= N || y >= N ? -1 : bd[y][x];
+  const run = (x, y, p, dx, dy) => { let n = 1, open = 0; for (const s of [1, -1]) { let i = 1; while (get(x + s * dx * i, y + s * dy * i) === p) { n++; i++; } if (get(x + s * dx * i, y + s * dy * i) === 0) open++; } return [n, open]; };
+  const won = (x, y, p) => DIRS.some(([dx, dy]) => run(x, y, p, dx, dy)[0] >= 5);
+  const val = (x, y, p) => { let t = 0; for (const [dx, dy] of DIRS) { const [n, o] = run(x, y, p, dx, dy); t += n >= 5 ? 100000 : n === 4 ? (o === 2 ? 10000 : o === 1 ? 1000 : 0) : n === 3 ? (o === 2 ? 1000 : o === 1 ? 100 : 0) : n === 2 ? (o === 2 ? 100 : o === 1 ? 10 : 0) : o; } return t; };
+  const aiMove = () => {
+    let best = -1, bs = []; for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) if (!bd[y][x]) { const s = val(x, y, 2) * 1.05 + val(x, y, 1); if (s > best) { best = s; bs = [[x, y]]; } else if (s === best) bs.push([x, y]); }
+    return pick(bs);
+  };
+  cv.onclick = e => {
+    if (over || busy) return; const r = cv.getBoundingClientRect(), k = W / r.width;
+    const x = Math.round(((e.clientX - r.left) * k - P) / (C - 1.1)), y = Math.round(((e.clientY - r.top) * k - P) / (C - 1.1));
+    if (get(x, y) !== 0) return; bd[y][x] = 1; moves++; draw();
+    if (won(x, y, 1)) { over = true; return end(Math.max(20, 300 - moves * 3), '你赢了！'); }
+    busy = true; $('#st', box).textContent = '小伴思考中…';
+    setTimeout(() => {
+      const [ax, ay] = aiMove(); bd[ay][ax] = 2; draw(); busy = false; $('#st', box).textContent = '轮到你（黑）';
+      if (won(ax, ay, 2)) { over = true; end(0, 'AI 赢了，再试一次'); }
+    }, 300);
+  };
+  draw(); return () => { over = true; };
+}
+
+function react(box, end) {
+  let state = 'idle', t0 = 0, timer; box.innerHTML = `<div class="react" id="rb" style="background:var(--sky)">点击开始</div><div class="sub">成绩 = 1000 − 反应毫秒数，越高越好</div>`;
+  const rb = $('#rb', box);
+  rb.onclick = () => {
+    if (state === 'idle') { state = 'wait'; rb.style.background = 'var(--coral)'; rb.textContent = '等变绿再点…'; timer = setTimeout(() => { state = 'go'; t0 = performance.now(); rb.style.background = 'var(--mint)'; rb.textContent = '现在！'; }, 1500 + Math.random() * 2500); }
+    else if (state === 'wait') { clearTimeout(timer); state = 'idle'; rb.style.background = 'var(--sun)'; rb.textContent = '太急了！点击重来'; }
+    else if (state === 'go') { const ms = Math.round(performance.now() - t0); state = 'done'; end(Math.max(0, 1000 - ms), `你的反应是 ${ms} 毫秒`); }
+  };
+  return () => clearTimeout(timer);
+}
+
+/* ===== 工具 ===== */
+let tool = 'todo';
+function viewTools() {
+  $('#main').innerHTML = `<div class="wrap"><h1>工具</h1><div class="tabs">${[['todo', '✅ 待办'], ['note', '📝 便签'], ['calc', '🧮 计算器'], ['pomo', '🍅 番茄钟']].map(([k, n]) => `<button class="pill ${tool === k ? 'on' : ''}" data-t="${k}">${n}</button>`).join('')}</div><div id="tb"></div></div>`;
+  $$('.pill').forEach(p => p.onclick = () => { tool = p.dataset.t; viewTools(); });
+  ({ todo: toolTodo, note: toolNote, calc: toolCalc, pomo: toolPomo })[tool]($('#tb'));
+}
+function toolTodo(el) {
+  const todos = store.get('todos', []);
+  el.innerHTML = `<div class="row"><input type="text" id="ti" placeholder="要做什么？回车添加"><button class="btn" id="ta">添加</button></div>
+    <div class="card" style="margin-top:16px">${todos.length ? todos.map(t => `<div class="todo ${t.done ? 'done' : ''}"><button class="chk ${t.done ? 'done' : ''}" data-c="${t.id}">${t.done ? '✓' : ''}</button><span class="sp">${esc(t.t)}</span><button class="btn sm ghost" data-d="${t.id}">删除</button></div>`).join('') : '<div class="sub">空空如也。写下今天最重要的一件事吧。</div>'}</div>`;
+  const add = () => { const v = $('#ti').value.trim(); if (!v) return; todos.unshift({ id: Date.now(), t: v, done: false }); store.set('todos', todos); toolTodo(el); };
+  $('#ta').onclick = add; $('#ti').onkeydown = e => { if (e.key === 'Enter' && !e.isComposing) add(); };
+  $$('[data-c]', el).forEach(b => b.onclick = () => {
+    const t = todos.find(x => x.id == b.dataset.c); t.done = !t.done; store.set('todos', todos);
+    if (t.done) { const s = stats(); s.todosDone++; store.set('stats', s); addPoints(3, '完成待办'); mark('todo'); }
+    toolTodo(el);
+  });
+  $$('[data-d]', el).forEach(b => b.onclick = () => { store.set('todos', todos.filter(x => x.id != b.dataset.d)); toolTodo(el); });
+}
+function toolNote(el) {
+  el.innerHTML = `<textarea id="nt" rows="14" placeholder="随手记点什么，自动保存"></textarea>`;
+  const t = $('#nt'); t.value = store.get('note', ''); t.oninput = () => store.set('note', t.value);
+}
+function toolCalc(el) {
+  const keys = ['C', '(', ')', '÷', '7', '8', '9', '×', '4', '5', '6', '−', '1', '2', '3', '+', '0', '.', '⌫', '='];
+  el.innerHTML = `<div class="card" style="max-width:320px;margin-bottom:14px;text-align:right"><div class="sub" id="ch" style="min-height:1.5em"></div><div style="font-size:34px;font-weight:900;overflow:auto" id="cd">0</div></div><div class="calc">${keys.map(k => `<button class="btn ${k === '=' ? 'coral' : /[÷×−+]/.test(k) ? '' : 'ghost'}">${k}</button>`).join('')}</div>`;
+  let ex = '';
+  $$('.calc .btn', el).forEach(b => b.onclick = () => {
+    const k = b.textContent;
+    if (k === 'C') ex = ''; else if (k === '⌫') ex = ex.slice(0, -1);
+    else if (k === '=') { try { const f = ex.replace(/×/g, '*').replace(/÷/g, '/').replace(/−/g, '-'); if (/^[\d+\-*/.() ]+$/.test(f)) { const r = Function('"use strict";return(' + f + ')')(); $('#ch', el).textContent = ex + ' ='; ex = String(+r.toFixed(10)); } } catch { ex = ''; toast('算式有误'); } }
+    else ex += k;
+    $('#cd', el).textContent = ex || '0';
+  });
+}
+let pomo = { end: 0, timer: null, mins: 25, left: 25 * 60 };
+function toolPomo(el) {
+  el.innerHTML = `<div class="card" style="max-width:420px"><div class="cd" id="pc"></div><div class="row" style="justify-content:center;margin-top:12px"><button class="btn" id="ps">开始</button><button class="btn ghost" id="pr">重置</button></div>
+    <div class="row" style="justify-content:center;margin-top:12px">${[15, 25, 45].map(m => `<button class="pill ${pomo.mins === m ? 'on' : ''}" data-m="${m}">${m} 分钟</button>`).join('')}</div><p class="sub" style="text-align:center;margin-top:10px">专注完成一个番茄 +20 积分</p></div>`;
+  const show = () => { const l = pomo.timer ? Math.max(0, Math.round((pomo.end - Date.now()) / 1000)) : pomo.left; const e = $('#pc'); if (e) e.textContent = String(l / 60 | 0).padStart(2, '0') + ':' + String(l % 60).padStart(2, '0'); return l; };
+  show();
+  const tickp = () => { if (show() <= 0) { clearInterval(pomo.timer); pomo.timer = null; pomo.left = pomo.mins * 60; const s = stats(); s.pomos++; store.set('stats', s); addPoints(20, '专注完成'); try { new Notification('趣伴', { body: '番茄钟结束，休息一下吧 🍅' }); } catch {} const b = $('#ps'); if (b) b.textContent = '开始'; show(); } };
+  if (pomo.timer) { clearInterval(pomo.timer); pomo.timer = setInterval(tickp, 500); $('#ps').textContent = '暂停'; }
+  $('#ps').onclick = () => {
+    if (pomo.timer) { pomo.left = Math.round((pomo.end - Date.now()) / 1000); clearInterval(pomo.timer); pomo.timer = null; $('#ps').textContent = '继续'; }
+    else { pomo.end = Date.now() + pomo.left * 1000; pomo.timer = setInterval(tickp, 500); $('#ps').textContent = '暂停'; try { Notification.requestPermission(); } catch {} }
+  };
+  $('#pr').onclick = () => { clearInterval(pomo.timer); pomo.timer = null; pomo.left = pomo.mins * 60; toolPomo(el); };
+  $$('[data-m]', el).forEach(b => b.onclick = () => { clearInterval(pomo.timer); pomo.timer = null; pomo.mins = +b.dataset.m; pomo.left = pomo.mins * 60; toolPomo(el); });
+}
+
+/* ===== 我的 ===== */
+function viewMe() {
+  const s = stats(), lv = level(s.points), nx = LEVELS.find(l => l[0] > s.points), ach = achievements();
+  $('#main').innerHTML = `<div class="wrap"><div class="row"><span class="av" style="width:64px;height:64px;font-size:26px">${me ? esc(me.name[0]) : '游'}</span><div><h1>${me ? esc(me.name) : '游客'}</h1><div class="sub">${lv[1]} · ${s.points} 积分${nx ? `（距「${nx[1]}」还差 ${nx[0] - s.points}）` : ''}</div></div></div>
+    <h2>成就 ${ach.filter(a => a.ok).length}/${ach.length}</h2>
+    <div class="badges">${ach.map(a => `<div class="ach ${a.ok ? '' : 'lock'}"><div class="e">${a.e}</div><b>${a.n}</b></div>`).join('')}</div>
+    <h2>设置</h2><div class="card">
+      <div class="task"><span class="sp">安装到桌面 / 手机主屏幕</span><span class="sub">浏览器菜单 → 安装「趣伴」</span></div>
+      <div class="task"><span class="sp">清除聊天记录（小伴）</span><button class="btn sm ghost" id="clr">清除</button></div>
+      <div class="task"><span class="sp">${me ? '退出登录' : '登录 / 注册，解锁好友聊天和排行榜'}</span><button class="btn sm" id="lo">${me ? '退出' : '登录'}</button></div></div>
+    <p class="sub" style="margin-top:20px">趣伴 QuBan v1.0 · 电脑版</p></div>`;
+  $('#clr').onclick = () => { store.set('aihist', [AI_HELLO]); toast('已清除'); };
+  $('#lo').onclick = () => { if (me) { localStorage.removeItem('qb_token'); token = ''; me = null; if (es) es.close(); go('home'); showAuth(); } else showAuth(); };
+}
+
+/* ===== 登录 ===== */
+function showAuth() {
+  if (STANDALONE) return toast('好友聊天需要联网版，单文件版暂不支持');
+  const a = $('#auth'); a.hidden = false; let mode = 'login';
+  const paint = () => {
+    a.innerHTML = `<div class="box"><img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MTIgNTEyIj4KICA8cmVjdCB3aWR0aD0iNTEyIiBoZWlnaHQ9IjUxMiIgcng9IjExNiIgZmlsbD0iI0ZGQzYzQSIvPgogIDxwYXRoIGQ9Ik0yNTYgMTA0QzE2MCAxMDQgOTYgMTY2IDk2IDI1MGMwIDYyIDM2IDExMiA5MCAxMzRsLTEwIDYyYy0yIDEyIDExIDE5IDIwIDExbDc0LTYwYzM0LTMgNTItNCA3Ni0xOCA1Mi0yMiA3NC03MiA3NC0xMjkgMC04NC02NC0xNDYtMTY0LTE0NnoiIGZpbGw9IiMxQzIzNDAiLz4KICA8Y2lyY2xlIGN4PSIxOTYiIGN5PSIyMzYiIHI9IjI0IiBmaWxsPSIjRkZDNjNBIi8+CiAgPHBhdGggZD0iTTI4MiAyNDZxMzAtNDQgNjAgMCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjRkZDNjNBIiBzdHJva2Utd2lkdGg9IjIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiLz4KICA8cGF0aCBkPSJNMTkwIDMwMHE2NiA1OCAxMzIgMCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjRkZDNjNBIiBzdHJva2Utd2lkdGg9IjIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiLz4KICA8Y2lyY2xlIGN4PSI0MDQiIGN5PSIxMTIiIHI9IjM4IiBmaWxsPSIjRkY2QjU3Ii8+CiAgPHBhdGggZD0iTTQwNCA5MHY0NE0zODIgMTEyaDQ0IiBzdHJva2U9IiNGRkY5RUMiIHN0cm9rZS13aWR0aD0iMTIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgo8L3N2Zz4K" alt="趣伴"><h1>趣伴</h1><p class="sub">聊天、AI 助手、小游戏、日常工具，一个就够</p>
+      <div class="row" style="justify-content:center"><button class="pill ${mode === 'login' ? 'on' : ''}" data-m="login">登录</button><button class="pill ${mode === 'reg' ? 'on' : ''}" data-m="reg">注册</button></div>
+      <input type="text" id="un" placeholder="昵称（好友通过它找到你）" maxlength="12" autocomplete="username"><input type="password" id="pw" placeholder="密码（至少 4 位）" autocomplete="current-password">
+      <div class="err" id="er"></div><button class="btn" id="go">${mode === 'login' ? '登录' : '注册并进入'}</button><button class="btn ghost" id="sk">先逛逛（游客）</button></div>`;
+    $$('[data-m]', a).forEach(b => b.onclick = () => { mode = b.dataset.m; paint(); });
+    const submit = async () => {
+      try {
+        const r = await api(mode === 'login' ? '/login' : '/register', { name: $('#un').value.trim(), pass: $('#pw').value });
+        token = r.token; me = r.me; localStorage.setItem('qb_token', token); a.hidden = true; connectStream(); go('home');
+      } catch (e) { $('#er').textContent = e.message; }
+    };
+    $('#go').onclick = submit; $('#pw').onkeydown = e => { if (e.key === 'Enter') submit(); };
+    $('#sk').onclick = () => { a.hidden = true; };
+  };
+  paint();
+}
+
+/* ===== 启动 ===== */
+$$('#nav button').forEach(b => b.onclick = () => go(b.dataset.tab));
+(async function init() {
+  if (token) { try { me = (await api('/me')).me; connectStream(); } catch { token = ''; localStorage.removeItem('qb_token'); } }
+  render();
+  if (!STANDALONE && !me && !localStorage.getItem('qb_seen')) { localStorage.setItem('qb_seen', '1'); showAuth(); }
+  if (!STANDALONE && 'serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+})();
+
+</script>
+</body>
+</html>

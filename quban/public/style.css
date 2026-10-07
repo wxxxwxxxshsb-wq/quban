@@ -1,3 +1,4 @@
+[hidden]{display:none!important}
 :root{
   --sun:#FFC63A; --ink:#1C2340; --cream:#FFF9EC; --coral:#FF6B57; --mint:#3CCFA0; --sky:#7CC4FF;
   --line:2.5px solid var(--ink); --pop:4px 4px 0 var(--ink);

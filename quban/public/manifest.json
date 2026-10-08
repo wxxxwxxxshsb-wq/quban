@@ -1,13 +1,13 @@
 {
-  "name": "趣伴 QuBan",
-  "short_name": "趣伴",
-  "description": "和朋友聊天、记录生活、一起玩游戏",
+  "name": "Privacy",
+  "short_name": "Privacy",
+  "description": "隐私优先的聊天与日常空间",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#050608",
-  "theme_color": "#050608",
+  "background_color": "#FFD21F",
+  "theme_color": "#FFD21F",
   "icons": [
     { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" },
-    { "src": "/logo.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+    { "src": "/logo.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
   ]
 }

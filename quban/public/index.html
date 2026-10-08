@@ -3,24 +3,30 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>趣伴 QuBan</title>
-<meta name="theme-color" content="#050608">
+<title>Privacy</title>
+<meta name="theme-color" content="#FFD21F">
+<meta name="apple-mobile-web-app-title" content="Privacy">
 <link rel="icon" href="/logo.svg">
 <link rel="apple-touch-icon" href="/icon-512.png">
 <link rel="manifest" href="/manifest.json">
+<style>
+#splash{position:fixed;inset:0;z-index:200;background:#FFD21F;display:grid;place-items:center;opacity:1;transition:opacity .24s ease;}
+#splash.go{opacity:0;pointer-events:none}
+.splash-brand{display:flex;flex-direction:column;align-items:center;gap:22px;transform:translateY(-2vh)}
+#sl{width:78px;height:112px;overflow:visible;shape-rendering:crispEdges}
+#sl .shackle{transform:translateY(-7px);animation:lock-close .72s cubic-bezier(.22,.72,.25,1) .08s forwards;}
+.brand-word{font:600 16px/1 system-ui,-apple-system,"Segoe UI",sans-serif;letter-spacing:.28em;color:#171717;opacity:0;animation:word-in .34s ease-out .66s forwards}
+@keyframes lock-close{0%{transform:translateY(-7px)}76%{transform:translateY(1px)}100%{transform:translateY(0)}}
+@keyframes word-in{to{opacity:1}}
+@media(prefers-reduced-motion:reduce){#sl .shackle,.brand-word{animation:none;transform:none;opacity:1}#splash{transition:none}}
+</style>
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-<div id="splash" aria-hidden="true">
-  <div class="splash-aura"></div><div class="splash-ring"></div>
-  <div class="splash-core"><img src="/logo.svg" alt=""><span class="splash-flare"></span></div>
-  <div class="splash-wordmark">趣伴 <span>X · QUBAN</span></div>
-  <div class="splash-caption">MAKE EVERY MOMENT COUNT</div>
-  <div class="splash-progress"><i></i></div>
-</div>
+<div id="splash" aria-hidden="true"><div class="splash-brand"><svg id="sl" viewBox="0 0 64 96"><g class="shackle" fill="#171717"><path d="M24 6h16v6H24zM18 12h6v18h-6zM40 12h6v18h-6z"/></g><path fill="#171717" d="M10 30h44v34H10z"/><path fill="#FFD21F" d="M17 36h30v22H17z"/><path fill="#171717" d="M23 40h16v4H23zM23 40h4v18h-4zM35 40h4v9h-4zM23 47h16v4H23z"/></svg><span class="brand-word">PRIVACY</span></div></div>
 <div id="app">
   <nav id="nav">
-    <div class="brand"><img src="/logo.svg" alt="趣伴"><span>趣伴</span></div>
+    <div class="brand"><img src="/logo.svg" alt="Privacy"><span>Privacy</span></div>
     <button data-tab="home"><i>🏠</i><span>今天</span></button>
     <button data-tab="chat"><i>💬</i><span>聊天</span><em id="dot" hidden></em></button>
     <button data-tab="games"><i>🎮</i><span>游戏</span></button>
@@ -31,7 +37,13 @@
 </div>
 <div id="auth" hidden></div>
 <div id="toast"></div>
-<script>(()=>{const s=document.getElementById('splash');setTimeout(()=>{if(s){s.classList.add('leaving');setTimeout(()=>s.remove(),620)}},2250)})()</script>
+<script>(()=>{const s=document.getElementById('splash');if(!s)return;
+try{if(!/[?&]splash/.test(location.search)&&sessionStorage.getItem('prv_s_v232')){s.remove();return}sessionStorage.setItem('prv_s_v232','1')}catch(e){}
+let min=false,done=false;
+const go=()=>{if(done||!min||!window.__qbReady)return;done=true;s.classList.add('go');setTimeout(()=>s.remove(),260)};
+setTimeout(()=>{min=true;go()},1300);
+addEventListener('qb-ready',go,{once:true});
+setTimeout(()=>{window.__qbReady=true;min=true;go()},4500)})()</script>
 <script src="/app.js"></script>
 </body>
 </html>

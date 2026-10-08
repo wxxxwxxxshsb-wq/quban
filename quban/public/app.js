@@ -1,4 +1,4 @@
-/* 趣伴 QuBan 1.0 前端 */
+/* Privacy 2.3.2 前端 */
 'use strict';
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -9,8 +9,21 @@ const yesterday = () => fmt(new Date(Date.now() - 864e5));
 const pick = a => a[Math.random() * a.length | 0];
 
 const STANDALONE = location.protocol === 'file:';
+const APP_VERSION = '2.3.2';
+/* ---------- 错误上报：页面里的任何报错都会自动发回服务器，和后端日志用同一个错误码关联 ---------- */
+let lastRid = '', reportCount = 0;
+const reported = new Set();
+function reportError(kind, msg, extra) {
+  if (STANDALONE || reportCount >= 5) return;
+  const key = kind + msg; if (reported.has(key)) return;
+  reported.add(key); reportCount++;
+  try { fetch('/api/client-error', { method: 'POST', headers: { 'Content-Type': 'application/json' }, keepalive: true, body: JSON.stringify(Object.assign({ kind, msg: String(msg).slice(0, 300), url: location.pathname, rid: lastRid, v: APP_VERSION }, extra)) }).catch(() => {}); } catch {}
+}
+addEventListener('error', e => reportError('js', e.message, { src: (e.filename || '').split('/').pop(), line: e.lineno, stack: e.error && e.error.stack }));
+addEventListener('unhandledrejection', e => { const r = e.reason; reportError('promise', (r && r.message) || r, { stack: r && r.stack }); });
 let token = localStorage.getItem('qb_token') || '';
 let me = null;           // { name } 或 null（游客）
+let accountSettings = null;
 let tab = 'home';
 let stopGame = null;     // 当前游戏的清理函数
 let es = null;           // SSE
@@ -44,9 +57,11 @@ async function api(path, body) {
   const opt = { headers: { 'Content-Type': 'application/json' } };
   if (token) opt.headers.Authorization = 'Bearer ' + token;
   if (body !== undefined) { opt.method = 'POST'; opt.body = JSON.stringify(body); }
-  const r = await fetch('/api' + path, opt);
+  let r;
+  try { r = await fetch('/api' + path, opt); } catch (e) { throw new Error('网络不通，请检查网络后重试'); }
+  const rid = r.headers.get('X-Request-Id') || ''; lastRid = rid;
   const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(j.error || '请求失败');
+  if (!r.ok) { const er = new Error((j.error || '请求失败') + (r.status >= 500 && rid ? '（错误码 ' + rid + '）' : '')); er.rid = rid; er.status = r.status; throw er; }
   return j;
 }
 function toast(t) {
@@ -55,7 +70,7 @@ function toast(t) {
 }
 
 /* ---------- 积分 / 连续打卡 / 每日任务 ---------- */
-const LEVELS = [[0, '新朋友'], [60, '常客'], [200, '老伙伴'], [500, '趣味达人'], [1000, '趣伴传说']];
+const LEVELS = [[0, '新朋友'], [60, '常客'], [200, '老伙伴'], [500, '趣味达人'], [1000, 'Privacy传说']];
 function stats() {
   const s = store.get('stats', { points: 0, streak: 0, last: '', plays: 0, todosDone: 0, pomos: 0, aiAsks: 0, best: {}, daily: {} });
   if (s.daily.date !== today()) s.daily = { date: today(), play: false, chat: false, todo: false, bonus: false };
@@ -238,6 +253,7 @@ function updateDot() { $('#dot').hidden = !Object.values(chat.unread).some(n => 
 function connectStream() {
   if (es) es.close(); if (!me) return;
   es = new EventSource('/api/stream?token=' + token);
+  es.addEventListener('account-deleted', () => { if(me)clearLocalAccountData(me.name);localStorage.removeItem('qb_token');localStorage.removeItem('qb_last_user');token='';me=null;accountSettings=null;es?.close();toast('账号已删除');go('home'); });
   es.addEventListener('game-invite', e => showGameInvite(JSON.parse(e.data)));
   es.addEventListener('game-update', e => {
     const game = JSON.parse(e.data);
@@ -248,9 +264,9 @@ function connectStream() {
     const m = JSON.parse(e.data);
     (chat.msgs[m.from] = chat.msgs[m.from] || []).push(m);
     if (tab === 'chat' && chat.peer === m.from) appendBub(m.text, false);
-    else { chat.unread[m.from] = (chat.unread[m.from] || 0) + 1; updateDot(); toast(`${m.from}：${m.text.slice(0, 20)}`); if (tab === 'chat') viewChat(); }
+    else { chat.unread[m.from] = (chat.unread[m.from] || 0) + 1; updateDot(); const n = accountSettings?.notifications; if (n?.enabled !== false && n?.messages !== false) { toast(n?.preview === 'none' ? '收到一条新消息' : n?.preview === 'all' ? `${m.from}：${m.text.slice(0, 20)}` : `${m.from} 发来新消息`); if (document.hidden && 'Notification' in window && Notification.permission === 'granted') new Notification('Privacy', { body: n?.preview === 'none' ? '收到一条新消息' : n?.preview === 'all' ? `${m.from}：${m.text.slice(0, 80)}` : `${m.from} 发来新消息`, silent: n?.sound === false }); } if (tab === 'chat') viewChat(); }
   });
-  es.addEventListener('friend', e => { toast(JSON.parse(e.data).name + ' 加你为好友了'); if (tab === 'chat') viewChat(); });
+  es.addEventListener('friend', e => { const who = JSON.parse(e.data).name; if (accountSettings?.notifications?.enabled !== false && accountSettings?.notifications?.security !== false) toast(who + ' 加你为好友了'); if (tab === 'chat') viewChat(); });
   api('/games/invites').then(({ invites }) => invites.forEach(showGameInvite)).catch(() => {});
 }
 
@@ -269,7 +285,7 @@ async function showFriendPicker() {
   if (!me) return showAuth();
   await loadFriends();
   const a = $('#auth'); a.hidden = false;
-  a.innerHTML = `<div class="box friend-picker"><img src="/logo.svg" alt="趣伴"><h1>约好友开一局</h1><p class="sub">选一位在线好友，马上开始五子棋。</p>${chat.friends.length ? chat.friends.map(f => `<button class="friend-choice" data-friend="${esc(f.name)}" ${f.online ? '' : 'disabled'}><span>${esc(f.name[0])}</span><b>${esc(f.name)}</b><small>${f.online ? '在线' : '暂时离线'}</small></button>`).join('') : '<div class="sub">你还没有好友。先到聊天页添加好友，就能邀请对战。</div>'}<button class="btn ghost" id="closePicker">关闭</button></div>`;
+  a.innerHTML = `<div class="box friend-picker"><img src="/logo.svg" alt="Privacy"><h1>约好友开一局</h1><p class="sub">选一位在线好友，马上开始五子棋。</p>${chat.friends.length ? chat.friends.map(f => `<button class="friend-choice" data-friend="${esc(f.name)}" ${f.online ? '' : 'disabled'}><span>${esc(f.name[0])}</span><b>${esc(f.name)}</b><small>${f.online ? '在线' : '暂时离线'}</small></button>`).join('') : '<div class="sub">你还没有好友。先到聊天页添加好友，就能邀请对战。</div>'}<button class="btn ghost" id="closePicker">关闭</button></div>`;
   $$('[data-friend]', a).forEach(b => b.onclick = () => { a.hidden = true; inviteOnlineGame(b.dataset.friend); });
   $('#closePicker').onclick = () => { a.hidden = true; };
 }
@@ -308,7 +324,7 @@ async function showGameInvite(game) {
   if (!game || handledInvites.has(game.id) || inviteDialogId === game.id) return;
   handledInvites.add(game.id); inviteDialogId = game.id;
   const from = game.players[0], a = $('#auth'); a.hidden = false;
-  a.innerHTML = `<div class="box"><img src="/logo.svg" alt="趣伴"><h1>好友来挑战啦</h1><p class="sub"><b>${esc(from)}</b> 邀请你来一场五子棋。</p><div class="row"><button class="btn ghost" id="declineGame">稍后再说</button><button class="btn" id="acceptGame">接受，开局</button></div></div>`;
+  a.innerHTML = `<div class="box"><img src="/logo.svg" alt="Privacy"><h1>好友来挑战啦</h1><p class="sub"><b>${esc(from)}</b> 邀请你来一场五子棋。</p><div class="row"><button class="btn ghost" id="declineGame">稍后再说</button><button class="btn" id="acceptGame">接受，开局</button></div></div>`;
   $('#declineGame').onclick = async () => { a.hidden = true; inviteDialogId = null; try { await api(`/games/${encodeURIComponent(game.id)}/decline`, {}); } catch {} };
   $('#acceptGame').onclick = async () => { try { const { game: accepted } = await api(`/games/${encodeURIComponent(game.id)}/accept`, {}); a.hidden = true; inviteDialogId = null; activeOnlineGame = game.id; renderOnlineBoard(accepted); } catch (e) { a.hidden = true; inviteDialogId = null; toast(e.message); } };
 }
@@ -578,7 +594,7 @@ function toolPomo(el) {
     <div class="row" style="justify-content:center;margin-top:12px">${[15, 25, 45].map(m => `<button class="pill ${pomo.mins === m ? 'on' : ''}" data-m="${m}">${m} 分钟</button>`).join('')}</div><p class="sub" style="text-align:center;margin-top:10px">专注完成一个番茄 +20 积分</p></div>`;
   const show = () => { const l = pomo.timer ? Math.max(0, Math.round((pomo.end - Date.now()) / 1000)) : pomo.left; const e = $('#pc'); if (e) e.textContent = String(l / 60 | 0).padStart(2, '0') + ':' + String(l % 60).padStart(2, '0'); return l; };
   show();
-  const tickp = () => { if (show() <= 0) { clearInterval(pomo.timer); pomo.timer = null; pomo.left = pomo.mins * 60; const s = stats(); s.pomos++; store.set('stats', s); addPoints(20, '专注完成'); try { new Notification('趣伴', { body: '番茄钟结束，休息一下吧 🍅' }); } catch {} const b = $('#ps'); if (b) b.textContent = '开始'; show(); } };
+  const tickp = () => { if (show() <= 0) { clearInterval(pomo.timer); pomo.timer = null; pomo.left = pomo.mins * 60; const s = stats(); s.pomos++; store.set('stats', s); addPoints(20, '专注完成'); try { new Notification('Privacy', { body: '番茄钟结束，休息一下吧 🍅' }); } catch {} const b = $('#ps'); if (b) b.textContent = '开始'; show(); } };
   if (pomo.timer) { clearInterval(pomo.timer); pomo.timer = setInterval(tickp, 500); $('#ps').textContent = '暂停'; }
   $('#ps').onclick = () => {
     if (pomo.timer) { pomo.left = Math.round((pomo.end - Date.now()) / 1000); clearInterval(pomo.timer); pomo.timer = null; $('#ps').textContent = '继续'; }
@@ -594,35 +610,123 @@ function viewMe() {
   const visits = store.get('visits', []).slice().sort((a, b) => b.date.localeCompare(a.date));
   const openCount = visits.reduce((sum, v) => sum + (v.count || 0), 0);
   $('#main').innerHTML = `<div class="wrap"><div class="row"><span class="av" style="width:64px;height:64px;font-size:26px">${me ? esc(me.name[0]) : '游'}</span><div><h1>${me ? esc(me.name) : '游客'}</h1><div class="sub">${lv[1]} · ${s.points} 积分${nx ? `（距「${nx[1]}」还差 ${nx[0] - s.points}）` : ''}</div></div></div>
-    <h2>每天来看看 · 打开日志</h2><div class="visit-summary"><div class="visit-total"><strong>${openCount}</strong><span>累计打开</span></div><div class="visit-days"><strong>${visits.length}</strong><span>记录天数</span></div><div class="visit-list">${visits.length ? visits.slice(0, 10).map(v => `<div class="visit-row"><span class="visit-dot"></span><b>${v.date === today() ? '今天' : esc(v.date)}</b><span class="sp"></span><span>${v.count} 次打开</span><small>${v.first ? new Date(v.first).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) : ''}</small></div>`).join('') : '<div class="sub">从今天开始，帮你记下每次来趣伴的日子。</div>'}</div></div>
+    <h2>每天来看看 · 打开日志</h2><div class="visit-summary"><div class="visit-total"><strong>${openCount}</strong><span>累计打开</span></div><div class="visit-days"><strong>${visits.length}</strong><span>记录天数</span></div><div class="visit-list">${visits.length ? visits.slice(0, 10).map(v => `<div class="visit-row"><span class="visit-dot"></span><b>${v.date === today() ? '今天' : esc(v.date)}</b><span class="sp"></span><span>${v.count} 次打开</span><small>${v.first ? new Date(v.first).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) : ''}</small></div>`).join('') : '<div class="sub">从今天开始，帮你记下每次来Privacy的日子。</div>'}</div></div>
     <h2>成就 ${ach.filter(a => a.ok).length}/${ach.length}</h2>
     <div class="badges">${ach.map(a => `<div class="ach ${a.ok ? '' : 'lock'}"><div class="e">${a.e}</div><b>${a.n}</b></div>`).join('')}</div>
     <h2>设置</h2><div class="card">
-      <div class="task"><span class="sp">安装到桌面 / 手机主屏幕</span><span class="sub">浏览器菜单 → 安装「趣伴」</span></div>
+      <button class="task settings-link" id="openSettings"><span class="sp">应用设置</span><span class="sub">语言、通知、隐私与安全</span><b>›</b></button>
+      <div class="task"><span class="sp">安装到桌面 / 手机主屏幕</span><span class="sub">浏览器菜单 → 安装「Privacy」</span></div>
       <div class="task"><span class="sp">清除聊天记录（小伴）</span><button class="btn sm ghost" id="clr">清除</button></div>
       <div class="task"><span class="sp">${me ? '退出登录' : '登录 / 注册，解锁好友聊天和排行榜'}</span><button class="btn sm" id="lo">${me ? '退出' : '登录'}</button></div></div>
-    <p class="sub" style="margin-top:20px">趣伴 QuBan v2.2.2 · 金属 X 标志、好友实时对战</p></div>`;
+    <p class="sub" style="margin-top:20px">Privacy v2.3.2 · 隐私优先的聊天空间</p></div>`;
   $('#clr').onclick = () => { store.set('aihist', [AI_HELLO]); toast('已清除'); };
+  $('#openSettings').onclick = viewSettings;
   $('#lo').onclick = () => { if (me) { localStorage.removeItem('qb_token'); token = ''; me = null; if (es) es.close(); go('home'); showAuth(); } else showAuth(); };
+}
+function clearLocalAccountData(name) { const prefix='qb_'+name+'_'; for(let i=localStorage.length-1;i>=0;i--){const k=localStorage.key(i);if(k&&k.startsWith(prefix))localStorage.removeItem(k);} }
+
+const LANGS = [['zh-CN','简体中文'],['en','English'],['ja','日本語'],['de','Deutsch'],['fr','Français'],['es','Español'],['ko','한국어']];
+const NAV_I18N = { 'zh-CN':['今天','聊天','游戏','工具','我的'],en:['Today','Chat','Games','Tools','Profile'],ja:['今日','チャット','ゲーム','ツール','マイページ'],de:['Heute','Chat','Spiele','Tools','Profil'],fr:["Aujourd’hui",'Chat','Jeux','Outils','Profil'],es:['Hoy','Chat','Juegos','Herramientas','Perfil'],ko:['오늘','채팅','게임','도구','내 정보'] };
+function applyLanguage(lang) { const labels=NAV_I18N[lang]||NAV_I18N['zh-CN']; $$('#nav button').forEach((b,i)=>{const s=$('span',b);if(s)s.textContent=labels[i]}); document.documentElement.lang=lang||'zh-CN'; }
+async function viewSettings() {
+  const main = $('#main');
+  main.innerHTML = '<div class="wrap"><p class="sub">正在读取设置…</p></div>';
+  if (me) { try { accountSettings = (await api('/settings')).settings; } catch (e) { toast(e.message); return viewMe(); } }
+  accountSettings = accountSettings || store.get('settings', {language:'zh-CN',notifications:{enabled:true,messages:true,security:true,preview:'name',sound:true},security:{autoDeleteOnFailedLogin:false,failedLoginLimit:6}});
+  const s = accountSettings, nt = s.notifications, sec = s.security;
+  main.innerHTML = `<div class="wrap settings-page"><div class="row"><button class="btn sm ghost" id="settingsBack">← 返回</button><div><h1>设置</h1><p class="sub">控制你的 Privacy 使用体验</p></div></div>
+    <h2>语言</h2><div class="card settings-card"><label class="setting-row"><span><b>界面语言</b><small>选择常用语言</small></span><select id="setLang">${LANGS.map(([v,n])=>`<option value="${v}" ${s.language===v?'selected':''}>${n}</option>`).join('')}</select></label></div>
+    <h2>通知</h2><div class="card settings-card">
+      ${settingToggle('notifyEnabled','应用通知',nt.enabled,'接收 Privacy 的消息和提醒')}
+      ${settingToggle('notifyMessages','新消息',nt.messages,'收到好友私信时提醒')}
+      ${settingToggle('notifySecurity','好友与安全提醒',nt.security,'好友动态及账号相关提醒')}
+      <label class="setting-row"><span><b>通知预览</b><small>锁屏或后台时显示的内容</small></span><select id="notifyPreview"><option value="all" ${nt.preview==='all'?'selected':''}>名称和消息</option><option value="name" ${nt.preview==='name'?'selected':''}>只显示名称</option><option value="none" ${nt.preview==='none'?'selected':''}>隐藏内容</option></select></label>
+      ${settingToggle('notifySound','提示音',nt.sound,'允许浏览器通知播放提示音')}
+      <button class="btn sm ghost" id="enableNotifications">开启设备通知</button><p class="sub">设备通知还需要在浏览器或手机系统设置中允许 Privacy。</p>
+    </div>
+    <h2>外观</h2><div class="card settings-card"><label class="setting-row"><span><b>聊天背景</b><small>选择低干扰的聊天氛围</small></span><select id="chatSkin"><option value="paper">暖纸黄</option><option value="cream">纯净奶油白</option><option value="pixel">细腻像素点</option></select></label></div>
+    <h2>隐私与安全</h2><div class="card settings-card">
+      ${me ? settingToggle('autoDelete','输错密码后自动删除账号',sec.autoDeleteOnFailedLogin,'达到你设定的次数后，账号及关联聊天、好友和记录将永久删除。') : '<p class="sub">登录后可配置账号安全选项。</p>'}
+      ${me ? `<label class="setting-row"><span><b>密码错误次数</b><small>可设置 3 到 20 次</small></span><input id="failedLimit" type="number" min="3" max="20" value="${Number(sec.failedLoginLimit)||6}" ${sec.autoDeleteOnFailedLogin?'':'disabled'}></label>
+      <p class="settings-danger">此选项开启后，知道你昵称的人可能故意输错密码触发删除。开启或关闭时都需要输入当前密码确认。</p>` : ''}
+      <button class="btn" id="saveSettings">保存设置</button>
+    </div>
+    ${me ? `<h2>账号与联系方式</h2><div class="card settings-card"><p>已登录：<b>${esc(me.name)}</b></p><p class="sub">绑定邮箱：${esc(me.email||'未绑定')}　·　手机号：${esc(me.phone||'未绑定')}</p><input type="email" id="bindEmail" placeholder="绑定或更换邮箱"><div class="otp-row"><input type="text" id="bindEmailCode" placeholder="邮箱验证码" inputmode="numeric" maxlength="6"><button class="btn sm ghost" id="sendBindEmail">获取邮箱码</button></div><input type="tel" id="bindPhone" placeholder="绑定或更换手机号，含国家区号"><div class="otp-row"><input type="text" id="bindPhoneCode" placeholder="短信验证码" inputmode="numeric" maxlength="6"><button class="btn sm ghost" id="sendBindPhone">获取短信码</button></div><button class="btn" id="saveContacts">保存验证通过的联系方式</button><hr><button class="btn coral" id="deleteAccount">注销并删除账号</button><p class="settings-danger">注销会删除账号及关联数据，且无法撤销。</p></div>` : ''}
+    <p class="sub settings-foot">通知内容预览仅影响设备提醒；聊天内容仍按当前服务端存储方式保存。</p></div>`;
+  $('#settingsBack').onclick = viewMe;
+  const savedSkin=store.get('chatSkin','paper');
+  $('#chatSkin').value=['paper','cream','pixel'].includes(savedSkin)?savedSkin:'paper';
+  document.body.dataset.chatSkin=$('#chatSkin').value;
+  $('#chatSkin').onchange = () => { store.set('chatSkin',$('#chatSkin').value); document.body.dataset.chatSkin=$('#chatSkin').value; };
+  if ($('#autoDelete')) $('#autoDelete').onchange = () => { $('#failedLimit').disabled = !$('#autoDelete').checked; };
+  $('#enableNotifications').onclick = async () => { if (!('Notification' in window)) return toast('此浏览器不支持系统通知'); const p = await Notification.requestPermission(); toast(p === 'granted' ? '设备通知已开启' : '请在浏览器设置中允许通知'); };
+  $('#saveSettings').onclick = saveSettings;
+  if ($('#deleteAccount')) $('#deleteAccount').onclick = async () => { const pass = prompt('输入当前密码以确认永久删除账号：'); if (pass === null) return; if (!confirm('确定删除账号及其关联数据？此操作无法撤销。')) return; try { const oldName=me.name; await api('/account/delete',{pass}); clearLocalAccountData(oldName); localStorage.removeItem('qb_token'); localStorage.removeItem('qb_last_user'); token='';me=null;accountSettings=null;if(es)es.close();toast('账号已删除');go('home'); } catch(e){toast(e.message);} };
+  if ($('#saveContacts')) {
+    $('#sendBindEmail').onclick=async()=>{try{await api('/otp/send',{purpose:'bind',channel:'email',address:$('#bindEmail').value.trim()});toast('邮箱验证码已发送');}catch(e){toast(e.message);}};
+    $('#sendBindPhone').onclick=async()=>{try{await api('/otp/send',{purpose:'bind',channel:'phone',address:$('#bindPhone').value.trim()});toast('短信验证码已发送');}catch(e){toast(e.message);}};
+    $('#saveContacts').onclick=async()=>{try{const email=$('#bindEmail').value.trim().toLowerCase(),phone=$('#bindPhone').value.trim();if(email){await api('/otp/verify',{purpose:'bind',channel:'email',address:email,code:$('#bindEmailCode').value.trim()});await api('/contact',{channel:'email',address:email});}if(phone){await api('/otp/verify',{purpose:'bind',channel:'phone',address:phone,code:$('#bindPhoneCode').value.trim()});await api('/contact',{channel:'phone',address:phone});}if(!email&&!phone)return toast('请至少填写一个新联系方式');me=(await api('/me')).me;toast('联系方式已更新');viewSettings();}catch(e){toast(e.message);}};
+  }
+}
+function settingToggle(id, label, checked, help) { return `<label class="setting-row"><span><b>${label}</b><small>${help}</small></span><input id="${id}" type="checkbox" ${checked?'checked':''}></label>`; }
+async function saveSettings() {
+  const next = { language: $('#setLang').value, notifications: { enabled: $('#notifyEnabled').checked, messages: $('#notifyMessages').checked, security: $('#notifySecurity').checked, preview: $('#notifyPreview').value, sound: $('#notifySound').checked }, security: { autoDeleteOnFailedLogin: $('#autoDelete')?.checked || false, failedLoginLimit: Math.max(3, Math.min(20, Number($('#failedLimit')?.value) || Number(accountSettings.security.failedLoginLimit) || 6)) } };
+  let pass;
+  if (next.security.autoDeleteOnFailedLogin !== !!accountSettings.security.autoDeleteOnFailedLogin) { pass = prompt('请再次输入当前密码确认更改自动删除功能：'); if (pass === null) return; }
+  try { if (me) accountSettings = (await api('/settings', Object.assign(next, {pass}))).settings; else { accountSettings = next; store.set('settings', next); }
+    applyLanguage(next.language); document.body.dataset.chatSkin = store.get('chatSkin','paper'); toast('设置已保存'); viewSettings();
+  } catch(e) { toast(e.message); }
 }
 
 /* ===== 登录 ===== */
 function showAuth() {
   if (STANDALONE) return toast('好友聊天需要联网版，单文件版暂不支持');
-  const a = $('#auth'); a.hidden = false; let mode = 'login';
+  const a = $('#auth'); a.hidden = false; let mode = 'login', verifiedEmail = '', verifiedPhone = '', recoveryVerified = false;
   const paint = () => {
-    a.innerHTML = `<div class="box"><img src="/logo.svg" alt="趣伴"><h1>趣伴</h1><p class="sub">聊天、AI 助手、小游戏、日常工具，一个就够</p>
+    const registerFields = mode === 'reg' ? `<div class="auth-intro"><b>以隐私为先</b><p>邮箱和手机号用于验证与找回密码，不会展示在好友资料中；验证码由邮件和短信服务商发送。当前版本聊天内容会保存在应用服务器，请勿发送高度敏感信息。</p></div>
+      <input type="email" id="authEmail" placeholder="邮箱地址" autocomplete="email"><div class="otp-row"><input type="text" id="emailCode" placeholder="邮箱验证码" inputmode="numeric" maxlength="6"><button class="btn sm ghost" id="sendEmail">获取邮箱码</button></div>
+      <input type="tel" id="authPhone" placeholder="手机号，含国家区号，例如 +8613800138000" autocomplete="tel"><div class="otp-row"><input type="text" id="phoneCode" placeholder="短信验证码" inputmode="numeric" maxlength="6"><button class="btn sm ghost" id="sendPhone">获取短信码</button></div>` : '';
+    const recoveryFields = mode === 'recover' ? `<input type="email" id="recoverAddress" placeholder="填写注册时绑定的邮箱或手机号"><div class="row"><button class="pill on" id="recEmail">邮箱</button><button class="pill" id="recPhone">手机号</button></div><div class="otp-row"><input type="text" id="recoverCode" placeholder="验证码" inputmode="numeric" maxlength="6"><button class="btn sm ghost" id="sendRecover">获取验证码</button></div><input type="password" id="newPass" placeholder="新密码（至少 8 位）" autocomplete="new-password" minlength="8">` : '';
+    a.innerHTML = `<div class="box"><img src="/logo.svg" alt="Privacy"><h1>Privacy</h1><p class="sub">聊天、AI 助手、小游戏、日常工具，一个就够</p>
       <div class="row" style="justify-content:center"><button class="pill ${mode === 'login' ? 'on' : ''}" data-m="login">登录</button><button class="pill ${mode === 'reg' ? 'on' : ''}" data-m="reg">注册</button></div>
-      <input type="text" id="un" placeholder="昵称（好友通过它找到你）" maxlength="12" autocomplete="username" value="${esc(localStorage.getItem('qb_last_user') || '')}"><input type="password" id="pw" placeholder="密码（至少 4 位）" autocomplete="current-password">
-      <div class="err" id="er"></div><button class="btn" id="go">${mode === 'login' ? '登录' : '注册并进入'}</button><button class="btn ghost" id="sk">先逛逛（游客）</button></div>`;
+      <input type="text" id="un" placeholder="昵称（好友通过它找到你）" maxlength="12" autocomplete="username" value="${esc(localStorage.getItem('qb_last_user') || '')}">
+      ${mode !== 'recover' ? `<input type="password" id="pw" placeholder="${mode==='login'?'密码':'新密码（至少 8 位）'}" autocomplete="${mode==='login'?'current-password':'new-password'}" ${mode==='reg'?'minlength="8"':''}>${registerFields}` : recoveryFields}
+      <div class="err" id="er"></div><button class="btn" id="go">${mode === 'login' ? '登录' : mode==='reg' ? '验证并注册' : '重置密码'}</button>
+      ${mode==='login' ? '<button class="btn ghost" id="forgot">忘记密码？</button>' : ''}<button class="btn ghost" id="sk">先逛逛（游客）</button></div>`;
     $$('[data-m]', a).forEach(b => b.onclick = () => { mode = b.dataset.m; paint(); });
+    const status = t => { const e=$('#er'); if(e)e.textContent=t; };
+    if (mode === 'reg') {
+      $('#sendEmail').onclick = async () => { const address=$('#authEmail').value.trim().toLowerCase(); try { await api('/otp/send',{purpose:'register',channel:'email',address}); status('邮箱验证码已发送，请查收邮件'); } catch(e){status(e.message);} };
+      $('#sendPhone').onclick = async () => { const address=$('#authPhone').value.trim(); try { await api('/otp/send',{purpose:'register',channel:'phone',address}); status('短信验证码已发送'); } catch(e){status(e.message);} };
+    }
+    if (mode === 'recover') {
+      let channel='email';
+      $('#recEmail').onclick=()=>{channel='email';$('#recEmail').classList.add('on');$('#recPhone').classList.remove('on');};
+      $('#recPhone').onclick=()=>{channel='phone';$('#recPhone').classList.add('on');$('#recEmail').classList.remove('on');};
+      $('#sendRecover').onclick=async()=>{const address=$('#recoverAddress').value.trim();try{await api('/otp/send',{purpose:'recover',channel,address,name:$('#un').value.trim()});status('如果账号和联系方式匹配，验证码已发送');}catch(e){status(e.message);}};
+    }
     const submit = async () => {
       try {
-        const r = await api(mode === 'login' ? '/login' : '/register', { name: $('#un').value.trim(), pass: $('#pw').value });
-        token = r.token; me = r.me; localStorage.setItem('qb_token', token); localStorage.setItem('qb_last_user', me.name); a.hidden = true; connectStream(); go('home');
-      } catch (e) { $('#er').textContent = e.message; }
+        const name=$('#un').value.trim();
+        if(mode==='recover') {
+          const channel=$('#recPhone').classList.contains('on')?'phone':'email', address=$('#recoverAddress').value.trim(), code=$('#recoverCode').value.trim(), pass=$('#newPass').value;
+          if(!recoveryVerified){await api('/otp/verify',{purpose:'recover',channel,address,code});recoveryVerified=true;}
+          await api('/password/reset',{name,channel,address,pass}); mode='login';paint();status('密码已重置，请登录');return;
+        }
+        const pass=$('#pw').value;
+        let r;
+        if(mode==='login') r=await api('/login',{name,pass});
+        else {
+          const email=$('#authEmail').value.trim().toLowerCase(),phone=$('#authPhone').value.trim();
+          if(verifiedEmail!==email){await api('/otp/verify',{purpose:'register',channel:'email',address:email,code:$('#emailCode').value.trim()});verifiedEmail=email;}
+          if(verifiedPhone!==phone){await api('/otp/verify',{purpose:'register',channel:'phone',address:phone,code:$('#phoneCode').value.trim()});verifiedPhone=phone;}
+          r=await api('/register',{name,pass,email,phone});
+        }
+        token = r.token; me = (await api('/me')).me; accountSettings = (await api('/settings')).settings; applyLanguage(accountSettings.language); localStorage.setItem('qb_token', token); localStorage.setItem('qb_last_user', me.name); a.hidden = true; connectStream(); go('home');
+      } catch (e) { if(e.status===410){clearLocalAccountData($('#un').value.trim());localStorage.removeItem('qb_last_user');} status(e.message); }
     };
-    $('#go').onclick = submit; $('#pw').onkeydown = e => { if (e.key === 'Enter') submit(); };
+    $('#go').onclick = submit; if($('#pw')) $('#pw').onkeydown = e => { if (e.key === 'Enter') submit(); };
+    if($('#forgot')) $('#forgot').onclick=()=>{mode='recover';paint();};
     $('#sk').onclick = () => { a.hidden = true; };
   };
   paint();
@@ -632,10 +736,13 @@ function showAuth() {
 $$('#nav button').forEach(b => b.onclick = () => go(b.dataset.tab));
 (async function init() {
   let sessionExpired = false;
-  if (token) { try { me = (await api('/me')).me; connectStream(); } catch { token = ''; localStorage.removeItem('qb_token'); sessionExpired = true; } }
+  if (token) { try { me = (await api('/me')).me; accountSettings = (await api('/settings')).settings; if(accountSettings.language) applyLanguage(accountSettings.language); connectStream(); } catch { token = ''; localStorage.removeItem('qb_token'); sessionExpired = true; } }
+  document.body.dataset.chatSkin = store.get('chatSkin','paper');
+  if(!me) applyLanguage(store.get('settings',{language:'zh-CN'}).language||'zh-CN');
   recordVisit();
   render();
   if (!STANDALONE && sessionExpired) { showAuth(); $('#er').textContent = '登录状态失效了，请先用原昵称和密码登录。'; }
   else if (!STANDALONE && !me && !localStorage.getItem('qb_seen')) { localStorage.setItem('qb_seen', '1'); showAuth(); }
   if (!STANDALONE && 'serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+  window.__qbReady = true; window.dispatchEvent(new Event('qb-ready'));
 })();

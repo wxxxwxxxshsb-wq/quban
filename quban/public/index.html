@@ -20,7 +20,7 @@
 @keyframes word-in{to{opacity:1}}
 @media(prefers-reduced-motion:reduce){#sl .shackle,.brand-word{animation:none;transform:none;opacity:1}#splash{transition:none}}
 </style>
-<link rel="stylesheet" href="/style.css?v=236">
+<link rel="stylesheet" href="/style.css?v=238">
 </head>
 <body>
 <div id="splash" aria-hidden="true"><div class="splash-brand"><svg id="sl" viewBox="0 0 64 96"><g class="shackle" fill="#171717"><path d="M24 6h16v6H24zM18 12h6v18h-6zM40 12h6v18h-6z"/></g><path fill="#171717" d="M10 30h44v34H10z"/><path fill="#FFD21F" d="M17 36h30v22H17z"/><path fill="#171717" d="M23 40h16v4H23zM23 40h4v18h-4zM35 40h4v9h-4zM23 47h16v4H23z"/></svg><span class="brand-word">PRIVACY</span></div></div>
@@ -38,13 +38,13 @@
 <div id="auth" hidden></div>
 <div id="toast"></div>
 <script>(()=>{const s=document.getElementById('splash');if(!s)return;
-try{if(!/[?&]splash/.test(location.search)&&sessionStorage.getItem('prv_s_v236')){s.remove();return}sessionStorage.setItem('prv_s_v236','1')}catch(e){}
+try{if(!/[?&]splash/.test(location.search)&&sessionStorage.getItem('prv_s_v237')){s.remove();return}sessionStorage.setItem('prv_s_v237','1')}catch(e){}
 let min=false,done=false;
 const go=()=>{if(done||!min||!window.__qbReady)return;done=true;s.classList.add('go');setTimeout(()=>s.remove(),260)};
 setTimeout(()=>{min=true;go()},1300);
 addEventListener('qb-ready',go,{once:true});
 setTimeout(()=>{window.__qbReady=true;min=true;go()},4500)})()</script>
 <script src="/vendor/qrcode.js"></script>
-<script src="/app.js?v=236"></script>
+<script src="/app.js?v=238"></script>
 </body>
 </html>

@@ -1,4 +1,4 @@
-/* Privacy 2.3.6 前端 */
+/* Privacy 2.3.8 前端 */
 'use strict';
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -9,7 +9,7 @@ const yesterday = () => fmt(new Date(Date.now() - 864e5));
 const pick = a => a[Math.random() * a.length | 0];
 
 const STANDALONE = location.protocol === 'file:';
-const APP_VERSION = '2.3.6';
+const APP_VERSION = '2.3.8';
 /* ---------- 错误上报：页面里的任何报错都会自动发回服务器，和后端日志用同一个错误码关联 ---------- */
 let lastRid = '', reportCount = 0;
 const reported = new Set();
@@ -1000,33 +1000,63 @@ async function saveSettings() {
 /* ===== 登录 ===== */
 function showAuth() {
   if (STANDALONE) return toast('好友聊天需要联网版，单文件版暂不支持');
-  const a = $('#auth'); a.hidden = false; let mode = arguments[0] || 'login', loginMethod = 'name', registrationMethod = 'id', verifiedEmail = '', verifiedPhone = '', recoveryVerified = false;
+  const a = $('#auth'); a.hidden = false; let mode = arguments[0] || 'login', loginMethod = 'id', registrationMethod = 'id', loginOpen = false, regOpen = false, verifiedEmail = '', verifiedPhone = '', recoveryVerified = false, googleIntent = '';
   const countries = [['CN','中国','+86'],['US','美国','+1'],['CA','加拿大','+1'],['GB','英国','+44'],['JP','日本','+81'],['DE','德国','+49'],['FR','法国','+33'],['AU','澳大利亚','+61'],['KR','韩国','+82'],['SG','新加坡','+65'],['HK','中国香港','+852'],['TW','中国台湾','+886'],['IN','印度','+91'],['BR','巴西','+55'],['RU','俄罗斯','+7'],['IT','意大利','+39'],['ES','西班牙','+34'],['NL','荷兰','+31'],['AE','阿联酋','+971'],['TH','泰国','+66']];
   const countryOptions = () => countries.map(([cc,label,dial]) => `<option value="${dial}" ${cc==='CN'?'selected':''}>${label} ${dial}</option>`).join('');
   const fullPhone = (select, input) => { const raw = $(input)?.value.trim() || ''; return raw.startsWith('+') ? raw.replace(/[\s()-]/g,'') : ($(select)?.value || '+86') + raw.replace(/\D/g,'').replace(/^0+/, ''); };
+  const labels = { id:'账号密码', email:'邮箱', phone:'手机号', google:'Google 登录' };
+  const googleBox = intent => `<div class="google-auth-area"><p>${intent==='register'?'使用 Google 验证邮箱并创建账号。':'使用 Google 安全登录。'}</p><div id="googleButton" class="google-button"></div><small id="googleHint">首次使用请先在 Render 配置 Google Client ID。</small></div>`;
+  let googleClientId = '', googleConfigLoading = false, googleConfigured = false;
+  const setupGoogle = intent => {
+    googleIntent = intent;
+    if (!googleConfigured) {
+      if (!googleConfigLoading) { googleConfigLoading=true; api('/config').then(c=>{googleClientId=c.googleClientId||'';googleConfigured=true;googleConfigLoading=false;setupGoogle(googleIntent);}).catch(e=>{googleConfigLoading=false;const h=$('#googleHint');if(h)h.textContent=e.message;}); }
+      return;
+    }
+    if (!googleClientId) { const h=$('#googleHint');if(h)h.textContent='Google 登录还未启用：需要先在 Render 设置 GOOGLE_CLIENT_ID。';return; }
+    if (!window.google?.accounts?.id) {
+      if (!document.querySelector('script[data-google-identity]')) { const s=document.createElement('script');s.src='https://accounts.google.com/gsi/client';s.async=true;s.defer=true;s.dataset.googleIdentity='1';s.onload=()=>setupGoogle(intent);s.onerror=()=>{const h=$('#googleHint');if(h)h.textContent='Google 登录组件暂时无法载入，请检查网络。';};document.head.appendChild(s); }
+      return;
+    }
+    const button=$('#googleButton'); if(!button)return; button.innerHTML='';
+    window.google.accounts.id.initialize({client_id:googleClientId,callback:async response=>{
+      try { const body={credential:response.credential,intent:googleIntent}; if(googleIntent==='register') body.name=$('#un')?.value.trim()||''; const r=await api('/auth/google',body); await finishAuth(r); }
+      catch(e){const er=$('#er');if(er)er.textContent=e.message;}
+    }});
+    window.google.accounts.id.renderButton(button,{type:'standard',theme:'filled_black',size:'large',shape:'rectangular',text:intent==='register'?'signup_with':'signin_with',width:320,locale:'zh-CN'});
+  };
+  const finishAuth = async r => { token=r.token;me=(await api('/me')).me;accountSettings=(await api('/settings')).settings;applyLanguage(accountSettings.language);localStorage.setItem('qb_token',token);localStorage.setItem('qb_last_user',me.name);a.hidden=true;connectStream();go('home');handlePendingPrivacyInvite(); };
+  const picker = (id, value, open, dataAttr) => `<div class="auth-method-picker"><button type="button" class="auth-method-trigger" id="${id}Trigger" aria-expanded="${open}" aria-controls="${id}Menu"><span>${labels[value]}</span><span class="picker-chevron ${open?'up':''}" aria-hidden="true"></span></button><div class="auth-method-menu" id="${id}Menu" ${open?'':'hidden'}>${Object.entries(labels).map(([key,label])=>`<button type="button" class="auth-method-option ${value===key?'selected':''}" ${dataAttr}="${key}">${label}${value===key?'<span aria-hidden="true">✓</span>':''}</button>`).join('')}</div></div>`;
   const paint = () => {
-    const registerFields = mode === 'reg' ? `<div class="reg-heading"><span class="eyebrow">CREATE YOUR ACCOUNT</span><h2>创建账号</h2><p>选一种注册方式，只填写当前方式需要的信息。</p></div>
-      <label class="reg-method-label" for="regMethod">选择注册方式</label><select id="regMethod" class="reg-method"><option value="id" ${registrationMethod==='id'?'selected':''}>Privacy ID</option><option value="email" ${registrationMethod==='email'?'selected':''}>邮箱地址</option><option value="phone" ${registrationMethod==='phone'?'selected':''}>手机号</option></select>
-      <input type="text" id="un" placeholder="设置专属 Privacy ID" autocomplete="username" maxlength="12" value="${esc(localStorage.getItem('qb_last_user') || '')}"><input type="password" id="pw" placeholder="设置密码（至少 8 位）" autocomplete="new-password" minlength="8">
+    const registerFields = mode === 'reg' ? `<div class="reg-heading"><span class="eyebrow">CREATE YOUR ACCOUNT</span><h2>创建账号</h2><p>选择一种方式，按提示完成注册。</p></div>
+      <label class="reg-method-label" for="regMethodTrigger">注册方式</label>${picker('regMethod',registrationMethod,regOpen,'data-reg-method')}
+      <input type="text" id="un" placeholder="设置专属 Privacy ID" autocomplete="username" maxlength="12" value="${esc(localStorage.getItem('qb_last_user') || '')}"><input type="password" id="pw" placeholder="设置密码（至少 8 位）" autocomplete="new-password" minlength="8" ${registrationMethod==='google'?'hidden':''}>
       <div class="reg-contact" id="regEmailFields" ${registrationMethod!=='email'?'hidden':''}><input type="email" id="authEmail" placeholder="邮箱地址" autocomplete="email"><div class="otp-row"><input type="text" id="emailCode" placeholder="邮箱验证码" inputmode="numeric" maxlength="6"><button class="btn sm ghost" id="sendEmail">获取验证码</button></div></div>
       <div class="reg-contact" id="regPhoneFields" ${registrationMethod!=='phone'?'hidden':''}><div class="phone-entry"><select id="regDial" aria-label="国家或地区区号">${countryOptions()}</select><input type="tel" id="authPhone" placeholder="手机号" autocomplete="tel"></div><div class="otp-row"><input type="text" id="phoneCode" placeholder="短信验证码" inputmode="numeric" maxlength="6"><button class="btn sm ghost" id="sendPhone">获取验证码</button></div></div>
-      <p class="reg-hint" id="regHint">${registrationMethod==='id'?'Privacy ID 可直接注册；之后可在设置中绑定邮箱或手机号，方便找回账号。':registrationMethod==='email'?'邮箱仅用于验证与找回，不会展示给好友。':'手机号仅用于验证与找回，不会展示给好友。'}</p>
-      <div class="auth-intro"><b>隐私优先</b><p>邮箱或手机号只用于账号验证，不显示在好友资料中。聊天内容目前保存在应用服务器，请勿发送高度敏感信息。</p></div>` : '';
+      ${registrationMethod==='google'?googleBox('register'):''}<p class="reg-hint" id="regHint">${registrationMethod==='id'?'创建 Privacy ID 和密码即可注册；邮箱或手机号可之后再绑定。':registrationMethod==='email'?'使用邮箱验证码验证，创建账号密码后即可登录。':registrationMethod==='phone'?'使用手机号验证码验证，创建账号密码后即可登录。':'Google 会验证你的邮箱；还需要设置 Privacy ID。'}</p>
+      <div class="auth-intro"><b>注重隐私</b><p>联系方式只用于账号验证与找回，不展示给好友。聊天内容目前保存在应用服务器，请勿发送高度敏感信息。</p></div>` : '';
     const recoveryFields = mode === 'recover' ? `<div class="row"><button class="pill on" id="recEmail">邮箱</button><button class="pill" id="recPhone">手机号</button></div><input type="email" id="recoverAddress" placeholder="注册时绑定的邮箱" autocomplete="email"><div class="phone-entry" id="recoverPhoneEntry" hidden><select id="recoverDial" aria-label="国家或地区区号">${countryOptions()}</select><input type="tel" id="recoverPhone" placeholder="注册时绑定的手机号" autocomplete="tel"></div><div class="otp-row"><input type="text" id="recoverCode" placeholder="验证码" inputmode="numeric" maxlength="6"><button class="btn sm ghost" id="sendRecover">获取验证码</button></div><input type="password" id="newPass" placeholder="新密码（至少 8 位）" autocomplete="new-password" minlength="8">` : '';
-    const loginFields = mode === 'login' ? `<div class="auth-methods"><button class="pill ${loginMethod==='name'?'on':''}" data-login="name">Privacy ID</button><button class="pill ${loginMethod==='email'?'on':''}" data-login="email">邮箱</button><button class="pill ${loginMethod==='phone'?'on':''}" data-login="phone">手机号</button></div>${loginMethod==='phone'?`<div class="phone-entry"><select id="loginDial" aria-label="国家或地区区号">${countryOptions()}</select><input type="tel" id="loginId" placeholder="手机号" autocomplete="tel"></div>`:`<input type="${loginMethod==='email'?'email':'text'}" id="loginId" placeholder="${loginMethod==='email'?'邮箱地址':'Privacy ID / 昵称'}" autocomplete="${loginMethod==='email'?'email':'username'}">`}` : '';
+    const loginFields = mode === 'login' ? `<label class="reg-method-label" for="loginMethodTrigger">登录方式</label>${picker('loginMethod',loginMethod,loginOpen,'data-login-method')}${loginMethod==='phone'?`<div class="phone-entry"><select id="loginDial" aria-label="国家或地区区号">${countryOptions()}</select><input type="tel" id="loginId" placeholder="手机号" autocomplete="tel"></div>`:loginMethod==='google'?googleBox('login'):`<input type="${loginMethod==='email'?'email':'text'}" id="loginId" placeholder="${loginMethod==='email'?'邮箱地址':'Privacy ID'}" autocomplete="${loginMethod==='email'?'email':'username'}"><input type="password" id="pw" placeholder="密码" autocomplete="current-password">`}` : '';
     a.innerHTML = `<div class="box ${mode==='reg'?'register-box':''}">${mode==='reg'?'':`<img src="/logo.svg" alt="Privacy"><h1>Privacy</h1><p class="sub">聊天、AI 助手、小游戏、日常工具，一个就够</p>`}
       <div class="row" style="justify-content:center"><button class="pill ${mode === 'login' ? 'on' : ''}" data-m="login">登录</button><button class="pill ${mode === 'reg' ? 'on' : ''}" data-m="reg">注册</button></div>
-      ${mode==='reg'?registerFields:mode==='recover'?`<input type="text" id="un" placeholder="Privacy ID / 昵称" maxlength="12" autocomplete="username" value="${esc(localStorage.getItem('qb_last_user') || '')}">${recoveryFields}`:`${loginFields}<input type="password" id="pw" placeholder="密码" autocomplete="current-password">`}
-      <div class="err" id="er"></div><button class="btn" id="go">${mode === 'login' ? '登录' : mode==='reg' ? '验证并注册' : '重置密码'}</button>
+      ${mode==='reg'?registerFields:mode==='recover'?`<input type="text" id="un" placeholder="Privacy ID / 昵称" maxlength="12" autocomplete="username" value="${esc(localStorage.getItem('qb_last_user') || '')}">${recoveryFields}`:loginFields}
+      <div class="err" id="er"></div>${(mode==='login'&&loginMethod==='google')||(mode==='reg'&&registrationMethod==='google')?'':`<button class="btn" id="go">${mode === 'login' ? '登录' : mode==='reg' ? '创建账号' : '重置密码'}</button>`}
       ${mode==='login' ? '<button class="btn ghost" id="forgot">忘记密码？</button><button class="btn text-guest" id="sk">以游客身份进入（有限体验）</button>' : ''}</div>`;
     $$('[data-m]', a).forEach(b => b.onclick = () => { mode = b.dataset.m; paint(); });
-    $$('[data-login]', a).forEach(b => b.onclick = () => { loginMethod = b.dataset.login; paint(); });
+    const bindPicker = (triggerId, menuId, current, setValue, setOpen, attr) => {
+      const trigger=$('#'+triggerId),menu=$('#'+menuId); if(!trigger||!menu)return;
+      trigger.onclick=()=>{setOpen(menu.hidden);paint();};
+      $$('['+attr+']',menu).forEach(b=>b.onclick=()=>{setValue(b.getAttribute(attr));setOpen(false);paint();});
+    };
+    if(mode==='reg') bindPicker('regMethodTrigger','regMethodMenu',registrationMethod,v=>registrationMethod=v,v=>regOpen=v,'data-reg-method');
+    if(mode==='login') bindPicker('loginMethodTrigger','loginMethodMenu',loginMethod,v=>loginMethod=v,v=>loginOpen=v,'data-login-method');
     const status = t => { const e=$('#er'); if(e)e.textContent=t; };
     if (mode === 'reg') {
-      $('#regMethod').onchange = () => { registrationMethod=$('#regMethod').value; $('#regEmailFields').hidden=registrationMethod!=='email'; $('#regPhoneFields').hidden=registrationMethod!=='phone'; $('#regHint').textContent=registrationMethod==='id'?'Privacy ID 可直接注册；之后可在设置中绑定邮箱或手机号，方便找回账号。':registrationMethod==='email'?'邮箱仅用于验证与找回，不会展示给好友。':'手机号仅用于验证与找回，不会展示给好友。'; status(''); };
       $('#sendEmail').onclick = async () => { const address=$('#authEmail').value.trim().toLowerCase(); try { await api('/otp/send',{purpose:'register',channel:'email',address}); status('邮箱验证码已发送，请查收邮件'); } catch(e){status(e.message);} };
       $('#sendPhone').onclick = async () => { const address=fullPhone('#regDial','#authPhone'); try { await api('/otp/send',{purpose:'register',channel:'phone',address}); status('短信验证码已发送'); } catch(e){status(e.message);} };
+      if(registrationMethod==='google') setupGoogle('register');
     }
+    if(mode==='login'&&loginMethod==='google') setupGoogle('login');
     if (mode === 'recover') {
       let channel='email';
       const setRecoveryChannel = next => { channel=next; $('#recEmail').classList.toggle('on',channel==='email'); $('#recPhone').classList.toggle('on',channel==='phone'); $('#recoverAddress').hidden=channel==='phone'; $('#recoverPhoneEntry').hidden=channel!=='phone'; };
@@ -1042,19 +1072,20 @@ function showAuth() {
           if(!recoveryVerified){await api('/otp/verify',{purpose:'recover',channel,address,code});recoveryVerified=true;}
           await api('/password/reset',{name,channel,address,pass}); mode='login';paint();status('密码已重置，请登录');return;
         }
-        const pass=$('#pw').value;
         let r;
-        if(mode==='login') { const identifier=loginMethod==='phone'?fullPhone('#loginDial','#loginId'):$('#loginId').value.trim(); r=await api('/login',{identifier,method:loginMethod,pass}); }
+        if(mode==='login') { const identifier=loginMethod==='phone'?fullPhone('#loginDial','#loginId'):$('#loginId').value.trim(); r=await api('/login',{identifier,method:loginMethod,pass:$('#pw').value}); }
         else {
+          if(registrationMethod==='google') return status('请使用上方 Google 按钮继续注册');
+          const pass=$('#pw').value;
           const email=registrationMethod==='email'?$('#authEmail').value.trim().toLowerCase():'',phone=registrationMethod==='phone'?fullPhone('#regDial','#authPhone'):'';
           if(registrationMethod==='email'&&verifiedEmail!==email){await api('/otp/verify',{purpose:'register',channel:'email',address:email,code:$('#emailCode').value.trim()});verifiedEmail=email;}
           if(registrationMethod==='phone'&&verifiedPhone!==phone){await api('/otp/verify',{purpose:'register',channel:'phone',address:phone,code:$('#phoneCode').value.trim()});verifiedPhone=phone;}
           r=await api('/register',{name,pass,email,phone,method:registrationMethod});
         }
-        token = r.token; me = (await api('/me')).me; accountSettings = (await api('/settings')).settings; applyLanguage(accountSettings.language); localStorage.setItem('qb_token', token); localStorage.setItem('qb_last_user', me.name); a.hidden = true; connectStream(); go('home'); handlePendingPrivacyInvite();
+        await finishAuth(r);
       } catch (e) { if(e.status===410){clearLocalAccountData($('#un')?.value.trim() || localStorage.getItem('qb_last_user') || '');localStorage.removeItem('qb_last_user');} status(e.message); }
     };
-    $('#go').onclick = submit; if($('#pw')) $('#pw').onkeydown = e => { if (e.key === 'Enter') submit(); };
+    if($('#go')) $('#go').onclick = submit; if($('#pw')) $('#pw').onkeydown = e => { if (e.key === 'Enter') submit(); };
     if($('#forgot')) $('#forgot').onclick=()=>{mode='recover';paint();};
     if($('#sk')) $('#sk').onclick = () => { a.hidden = true; me=null; render(); };
   };
@@ -1074,6 +1105,6 @@ $$('#nav button').forEach(b => b.onclick = () => go(b.dataset.tab));
   if(me)handlePendingPrivacyInvite();
   if (!STANDALONE && sessionExpired) { showAuth('login'); $('#er').textContent = '登录状态失效了，请先登录。'; }
   else if (!STANDALONE && !me) showAuth('login');
-  if (!STANDALONE && 'serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js?v=236', { updateViaCache: 'none' }).then(r => r.update()).catch(() => {});
+  if (!STANDALONE && 'serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js?v=238', { updateViaCache: 'none' }).then(r => r.update()).catch(() => {});
   window.__qbReady = true; window.dispatchEvent(new Event('qb-ready'));
 })();

@@ -1,6 +1,6 @@
 {
   "name": "privacy",
-  "version": "2.3.6",
+  "version": "2.3.8",
   "description": "Privacy — 隐私至上的聊天、AI 助手、小游戏、日常工具",
   "main": "server.js",
   "scripts": { "start": "node server.js", "dev": "node --watch server.js" },

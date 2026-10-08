@@ -5,10 +5,25 @@ services:
     plan: free
     buildCommand: echo "no build"
     startCommand: node server.js
+    healthCheckPath: /healthz
     envVars:
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: GH_MODELS_TOKEN
         sync: false
+      - key: DIAG_KEY
+        sync: false
       - key: AI_DAILY_LIMIT
         value: "50"
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM
+        sync: false
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_VERIFY_SERVICE_SID
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false

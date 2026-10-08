@@ -113,6 +113,34 @@ const readBody = (req, maxBytes = 1e6) => new Promise((resolve, reject) => {
   req.on('error', e => { if (!tooLarge) reject(e); });
 });
 const hash = (pw, salt) => crypto.scryptSync(pw, salt, 32).toString('hex');
+let googleJwks = { keys: [], expires: 0 };
+async function verifyGoogleCredential(token) {
+  if (!process.env.GOOGLE_CLIENT_ID) throw new Error('Google 登录尚未配置，请稍后再试');
+  const parts = String(token || '').split('.');
+  if (parts.length !== 3 || token.length > 12000) throw new Error('Google 凭证无效，请重试');
+  let header, claims;
+  try { header = JSON.parse(Buffer.from(parts[0], 'base64url').toString()); claims = JSON.parse(Buffer.from(parts[1], 'base64url').toString()); }
+  catch { throw new Error('Google 凭证无效，请重试'); }
+  if (header.alg !== 'RS256' || !header.kid) throw new Error('Google 凭证签名格式无效');
+  if (googleJwks.expires < Date.now() || !googleJwks.keys.length) {
+    const response = await fetch('https://www.googleapis.com/oauth2/v3/certs', { signal: AbortSignal.timeout(5000) });
+    if (!response.ok) throw new Error('暂时无法验证 Google 登录，请稍后重试');
+    const body = await response.json();
+    const cache = response.headers.get('cache-control') || '', maxAge = Number((cache.match(/max-age=(\d+)/) || [])[1]) || 300;
+    googleJwks = { keys: body.keys || [], expires: Date.now() + Math.min(maxAge, 3600) * 1000 };
+  }
+  const jwk = googleJwks.keys.find(k => k.kid === header.kid && k.alg === 'RS256' && k.use === 'sig');
+  if (!jwk) { googleJwks.expires = 0; throw new Error('Google 凭证已过期或无效，请重新登录'); }
+  const verifier = crypto.createVerify('RSA-SHA256'); verifier.update(parts[0] + '.' + parts[1]); verifier.end();
+  if (!verifier.verify(crypto.createPublicKey({ key: jwk, format: 'jwk' }), Buffer.from(parts[2], 'base64url'))) throw new Error('Google 凭证签名验证失败');
+  const now = Math.floor(Date.now() / 1000);
+  if (!['accounts.google.com', 'https://accounts.google.com'].includes(claims.iss) || claims.aud !== process.env.GOOGLE_CLIENT_ID || Number(claims.exp) <= now || Number(claims.iat) > now + 60 || !claims.sub || claims.email_verified !== true || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(claims.email || ''))) throw new Error('Google 账号验证未通过，请重试');
+  return { sub: String(claims.sub), email: String(claims.email).toLowerCase(), name: String(claims.name || '').slice(0, 80) };
+}
+function issueSession(res, name) {
+  const token = crypto.randomBytes(24).toString('hex'); db.sessions[token] = name; save();
+  return send(res, 200, { token, me: { name } });
+}
 const otpKey = (purpose, channel, address) => `${purpose}:${channel}:${String(address).trim().toLowerCase()}`;
 function grantOtp(purpose, channel, address) { otpGrants.set(otpKey(purpose, channel, address), Date.now() + 10 * 60 * 1000); }
 function hasOtp(purpose, channel, address) { return (otpGrants.get(otpKey(purpose, channel, address)) || 0) > Date.now(); }
@@ -335,6 +363,7 @@ async function api(req, res, url) {
     const provider = process.env.ANTHROPIC_API_KEY ? 'claude' : process.env.GH_MODELS_TOKEN ? 'github-models' : process.env.RENDER ? '' : 'ollama';
     return send(res, 200, { ok: true, aiConfigured: !!provider, aiProvider: provider || null });
   }
+  if (p === '/api/config' && m === 'GET') return send(res, 200, { googleClientId: process.env.GOOGLE_CLIENT_ID || '' });
   if (p === '/api/diag') {
     const k = process.env.DIAG_KEY;
     if (!k || (req.headers['x-diag-key'] || url.searchParams.get('key')) !== k) return send(res, 404, { error: 'not found' });
@@ -349,6 +378,22 @@ async function api(req, res, url) {
   }
 
   if (p === '/api/otp/send' && m === 'POST') return otpRoute(req,res,url);
+  if (p === '/api/auth/google' && m === 'POST') {
+    let identity, b;
+    try { b = await readBody(req, 20000); identity = await verifyGoogleCredential(b.credential); }
+    catch (e) { recordError('google-auth', e.message); return send(res, 503, { error: e.message }); }
+    let user = Object.values(db.users).find(u => u.googleSub === identity.sub);
+    if (!user && b.intent === 'register') {
+      const name = String(b.name || '').trim();
+      if (!/^[\u4e00-\u9fa5\w]{2,12}$/.test(name)) return send(res, 400, { error: 'Privacy ID 需要 2-12 个字（中文、字母、数字、下划线）' });
+      if (db.users[name]) return send(res, 400, { error: '这个 Privacy ID 已被使用，请换一个' });
+      if (Object.values(db.users).some(u => String(u.email || '').toLowerCase() === identity.email)) return send(res, 409, { error: '这个邮箱已绑定账号，请用原登录方式进入' });
+      const salt = crypto.randomBytes(16).toString('hex');
+      user = db.users[name] = { name, email: identity.email, phone: '', googleSub: identity.sub, googleName: identity.name, salt, pw: hash(crypto.randomBytes(32).toString('hex'), salt), friends: [], created: Date.now(), settings: defaultSettings() };
+    }
+    if (!user) return send(res, 404, { error: '还没有 Google 账号，请先切换到注册并完成创建' });
+    save(); return issueSession(res, user.name);
+  }
   if (p === '/api/otp/verify' && m === 'POST') {
     const b=await readBody(req),channel=b.channel,purpose=b.purpose,address=channel==='phone'?cleanPhone(b.address):String(b.address||'').trim().toLowerCase();
     if(!['register','recover','bind'].includes(purpose)||!['email','phone'].includes(channel))return send(res,400,{error:'验证参数不正确'});

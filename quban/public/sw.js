@@ -1,6 +1,6 @@
 // 让 Privacy 可以“安装”到手机/电脑桌面，并在弱网时秒开
-const C = 'privacy-v13';
-const FILES = ['/', '/style.css?v=236', '/app.js?v=236', '/vendor/qrcode.js', '/logo.svg', '/icon-512.png', '/manifest.json'];
+const C = 'privacy-v15';
+const FILES = ['/', '/style.css?v=238', '/app.js?v=238', '/vendor/qrcode.js', '/logo.svg', '/icon-512.png', '/manifest.json'];
 self.addEventListener('install', e => e.waitUntil(caches.open(C).then(c => c.addAll(FILES)).then(() => self.skipWaiting())));
 self.addEventListener('activate', e => e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== C).map(k => caches.delete(k)))).then(() => self.clients.claim())));
 self.addEventListener('fetch', e => {

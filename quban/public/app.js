@@ -1,4 +1,4 @@
-/* Privacy 2.3.2 前端 */
+/* Privacy 2.3.6 前端 */
 'use strict';
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -9,7 +9,7 @@ const yesterday = () => fmt(new Date(Date.now() - 864e5));
 const pick = a => a[Math.random() * a.length | 0];
 
 const STANDALONE = location.protocol === 'file:';
-const APP_VERSION = '2.3.3';
+const APP_VERSION = '2.3.6';
 /* ---------- 错误上报：页面里的任何报错都会自动发回服务器，和后端日志用同一个错误码关联 ---------- */
 let lastRid = '', reportCount = 0;
 const reported = new Set();
@@ -62,6 +62,15 @@ async function api(path, body) {
   const rid = r.headers.get('X-Request-Id') || ''; lastRid = rid;
   const j = await r.json().catch(() => ({}));
   if (!r.ok) { const er = new Error((j.error || '请求失败') + (r.status >= 500 && rid ? '（错误码 ' + rid + '）' : '')); er.rid = rid; er.status = r.status; throw er; }
+  return j;
+}
+async function apiDelete(path) {
+  if (STANDALONE) throw new Error('此功能需要联网版');
+  const headers = {}; if (token) headers.Authorization = 'Bearer ' + token;
+  const r = await fetch('/api' + path, { method: 'DELETE', headers });
+  const rid = r.headers.get('X-Request-Id') || ''; lastRid = rid;
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || '请求失败');
   return j;
 }
 function toast(t) {
@@ -122,14 +131,15 @@ function achievements() {
 
 /* ---------- 路由 / 渲染 ---------- */
 function go(t) {
-  if (!me && !['home','games'].includes(t)) { showAuth('login'); toast('游客模式仅开放首页和精选离线小游戏'); return; }
+  if (!me && !['home','games','more'].includes(t)) { showAuth('login'); toast('游客模式仅开放首页和精选离线小游戏'); return; }
   if (stopGame) { stopGame(); stopGame = null; }
   if (t !== 'games') activeOnlineGame = null;
   tab = t; chat.open = false; render();
 }
 function render() {
-  $$('#nav button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
-  ({ home: viewHome, chat: viewChat, games: viewGames, tools: viewTools, me: viewMe })[tab]();
+  document.body.dataset.activeTab = tab;
+  $$('#nav button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab || (['games','tools'].includes(tab) && b.dataset.tab === 'more')));
+  ({ home: viewHome, chat: viewChat, games: viewGames, tools: viewTools, more: viewMore, search: viewGlobalSearch, me: viewMe })[tab]();
   $('#main').scrollTop = 0;
 }
 
@@ -178,7 +188,7 @@ function viewHome() {
 }
 
 /* ===== 聊天 ===== */
-const chat = { peer: 'ai', friends: [], unread: {}, msgs: {}, open: false, busy: false };
+const chat = { peer: 'ai', friends: [], unread: {}, msgs: {}, open: false, busy: false, tray: '', selectedFiles: [], mediaUrls: [], cameraMode: 'photo', cameraFacing: 'environment', cameraStream: null, cameraRecorder: null, cameraChunks: [], cameraDiscard: false };
 const AI_HELLO = { role: 'assistant', content: '我是小伴 👋 你可以让我算数、写文案、翻译、解释概念、帮你安排今天的待办，或者只是聊聊天。' };
 const aiHist = () => store.get('aihist', [AI_HELLO]);
 const fmtMsg = t => esc(t).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
@@ -201,13 +211,211 @@ async function viewChat() {
       ${me ? '<div class="head" style="border-top:var(--line);border-bottom:none"><div class="row"><input type="text" id="addf" placeholder="输入好友昵称"><button class="btn sm" id="addb">加好友</button></div></div>' : '<div class="head" style="border-top:var(--line);border-bottom:none"><button class="btn" id="lg" style="width:100%">登录 / 注册</button></div>'}
     </aside>
     <section class="cpane" id="cp"></section></div>`;
-  $$('.ci').forEach(b => b.onclick = () => { chat.peer = b.dataset.p; chat.unread[chat.peer] = 0; chat.open = true; updateDot(); viewChat(); });
+  $$('.ci').forEach(b => b.onclick = () => {
+    chat.selectedFiles.forEach(f => URL.revokeObjectURL(f.preview)); chat.selectedFiles = []; chat.tray = '';
+    chat.peer = b.dataset.p; chat.unread[chat.peer] = 0; chat.open = true; updateDot(); viewChat();
+  });
   if ($('#addb')) $('#addb').onclick = async () => {
     const n = $('#addf').value.trim(); if (!n) return;
     try { await api('/friends/add', { name: n }); toast('已添加好友 ' + n); viewChat(); } catch (e) { toast(e.message); }
   };
   if ($('#lg')) $('#lg').onclick = showAuth;
   renderPane();
+}
+const chatSvg = {
+  back: '<path d="m15 18-6-6 6-6"/><path d="M9 12h11"/>',
+  search: '<circle cx="10.8" cy="10.8" r="6.3"/><path d="m16 16 4 4"/>',
+  more: '<circle cx="5" cy="12" r=".8"/><circle cx="12" cy="12" r=".8"/><circle cx="19" cy="12" r=".8"/>',
+  attach: '<path d="M12 5v14M5 12h14"/>',
+  camera: '<path d="M4 8.5h3l1.5-2h5L15 8.5h3A2 2 0 0 1 20 10.5v7A2 2 0 0 1 18 19H6a2 2 0 0 1-2-2z"/><circle cx="12" cy="13.5" r="3.2"/><path d="M17 11h.01"/>',
+  album: '<rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><circle cx="16.5" cy="9" r="1.2"/><path d="m5 17 5-5 3.2 3.2 2.1-2.1L19 17"/>',
+  sticker: '<path d="M13 3.5H6a2.5 2.5 0 0 0-2.5 2.5v12A2.5 2.5 0 0 0 6 20.5h8l6.5-6.5V6A2.5 2.5 0 0 0 18 3.5z"/><path d="M14 20v-4a2 2 0 0 1 2-2h4M8 10h.01M14 10h.01M8.5 14c1.8 2 4.2 2 6 0"/>',
+  sticker: '<path d="M13 3.5H6a2.5 2.5 0 0 0-2.5 2.5v12A2.5 2.5 0 0 0 6 20.5h8l6.5-6.5V6A2.5 2.5 0 0 0 18 3.5z"/><path d="M14 20v-4a2 2 0 0 1 2-2h4M8 10h.01M14 10h.01M8.5 14c1.8 2 4.2 2 6 0"/>',
+  mic: '<rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6"/>',
+  send: '<path d="m21 3-7.2 18-3.9-7.9L2 9.2z"/><path d="M21 3 9.9 13.1"/>',
+  close: '<path d="m6 6 12 12M18 6 6 18"/>',
+  play: '<path d="m9 6 9 6-9 6z" fill="currentColor" stroke="none"/>'
+};
+function chatIcon(name, cls = '') { return `<svg class="chat-svg ${cls}" viewBox="0 0 24 24" aria-hidden="true">${chatSvg[name] || ''}</svg>`; }
+function escapeAttr(value) { return esc(String(value || '')).replace(/`/g, '&#96;'); }
+function mediaHtml(file) {
+  const video = String(file.mime || '').startsWith('video/');
+  const tag = video ? 'video' : 'img';
+  return `<div class="shared-media ${video ? 'video' : ''}"><span class="media-fallback">正在加载媒体…</span><${tag} data-media-id="${escapeAttr(file.id)}" ${video ? 'controls playsinline preload="metadata"' : `alt="${escapeAttr(file.name)}"`}></${tag}></div>`;
+}
+function messageHtml(m, mine) {
+  const content = `${m.sticker ? `<div class="sticker-sent" aria-label="贴纸">${esc(m.sticker)}</div>` : ''}${m.text ? `<div class="message-text">${fmtMsg(m.text)}</div>` : ''}${(m.media || []).map(mediaHtml).join('')}`;
+  const date = new Date(m.t || Date.now());
+  const stamp = date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+  return `<div class="msg-row ${mine ? 'mine' : ''}" data-message-text="${escapeAttr(m.text || '')}"><div class="bub ${mine ? 'me' : ''}">${content}<span class="msg-meta">${stamp}${mine ? ' <i aria-label="已发送">✓✓</i>' : ''}</span></div></div>`;
+}
+async function loadMediaNodes(root = $('#ms')) {
+  if (!root || !token) return;
+  for (const el of $$('[data-media-id]', root)) {
+    if (el.dataset.loaded) continue;
+    el.dataset.loaded = '1';
+    try {
+      const r = await fetch('/api/media/' + encodeURIComponent(el.dataset.mediaId), { headers: { Authorization: 'Bearer ' + token } });
+      if (!r.ok) throw new Error('媒体暂时无法读取');
+      const objectUrl = URL.createObjectURL(await r.blob()); chat.mediaUrls.push(objectUrl); el.src = objectUrl;
+      el.parentElement?.querySelector('.media-fallback')?.remove();
+    } catch { el.parentElement?.classList.add('media-error'); }
+  }
+}
+function renderTray() {
+  const tray = $('#chatTray'); if (!tray) return;
+  if (!chat.tray) { tray.hidden = true; tray.innerHTML = ''; return; }
+  tray.hidden = false;
+  if (chat.tray === 'stickers') {
+    const packs = [['鳄鱼','🐊','🦖','🐸','😎','💚','🤝'],['猫咪','🐱','😺','😹','😻','🙀','🐾'],['熊猫','🐼','🎋','🥹','😂','❤️','✨']];
+    const pack = packs.find(p => p[0] === (chat.stickerPack || '鳄鱼')) || packs[0];
+    tray.innerHTML = `<div class="tray-head"><div><b>贴纸</b><small>选一张发给好友</small></div><button class="chat-icon-btn" id="closeTray" aria-label="关闭">${chatIcon('close')}</button></div><div class="sticker-packs">${packs.map(p => `<button class="sticker-pack ${p[0] === pack[0] ? 'active' : ''}" data-pack="${p[0]}">${p[0]}</button>`).join('')}</div><div class="sticker-grid">${pack.slice(1).map(s => `<button class="sticker-choice" data-sticker="${s}" aria-label="发送贴纸 ${s}">${s}</button>`).join('')}</div>`;
+    $('#closeTray').onclick = () => { chat.tray = ''; renderTray(); };
+    $$('[data-pack]', tray).forEach(b => b.onclick = () => { chat.stickerPack = b.dataset.pack; renderTray(); });
+    $$('[data-sticker]', tray).forEach(b => b.onclick = () => sendSticker(b.dataset.sticker));
+    return;
+  }
+  const selected = chat.selectedFiles;
+  tray.innerHTML = `<div class="tray-head"><div><b>${selected.length ? `已选择 ${selected.length} 项` : '相册'}</b><small>照片和视频可同时发送给好友，单个文件不超过 5 MB</small></div><div class="tray-actions"><button class="tray-action" id="pickPhotos">${chatIcon('album')}选择照片 / 视频</button><button class="chat-icon-btn" id="closeTray" aria-label="关闭">${chatIcon('close')}</button></div></div>${selected.length ? `<div class="selected-media">${selected.map((f,i)=>`<div class="selected-item">${f.type.startsWith('video/')?`<video src="${f.preview}" muted playsinline></video>`:`<img src="${f.preview}" alt="待发送照片">`}<button data-remove-file="${i}" aria-label="移除">×</button><small>${escapeAttr(f.name)}</small></div>`).join('')}</div><div class="tray-send"><input id="mediaCaption" type="text" placeholder="添加说明…" value="${escapeAttr($('#inp')?.value || '')}"><button class="send-round" id="sendMedia">发送${selected.length ? ` ${selected.length}` : ''}</button></div>` : `<div class="album-shortcuts"><button class="album-tile" id="albumPhotos">${chatIcon('album')}<b>照片和视频</b><small>从本机相册选择</small></button><button class="album-tile" id="albumCamera">${chatIcon('camera')}<b>拍摄照片</b><small>打开设备相机</small></button><button class="album-tile" id="albumSticker">${chatIcon('sticker')}<b>贴纸</b><small>打开贴纸面板</small></button></div><div class="album-hint">选择后可预览、添加说明，再发送给 ${esc(chat.peer)}</div>`}`;
+  $('#closeTray').onclick = () => { chat.tray = ''; renderTray(); };
+  const pick = id => { const input = $(id); if (input) input.click(); };
+  $('#pickPhotos')?.addEventListener('click', () => pick('#galleryPick'));
+  $('#albumPhotos')?.addEventListener('click', () => pick('#galleryPick'));
+  $('#albumCamera')?.addEventListener('click', () => pick('#cameraPick'));
+  $('#albumSticker')?.addEventListener('click', () => { chat.tray = 'stickers'; renderTray(); });
+  $$('[data-remove-file]', tray).forEach(b => b.onclick = () => {
+    const [removed] = chat.selectedFiles.splice(Number(b.dataset.removeFile), 1); if (removed?.preview) URL.revokeObjectURL(removed.preview); renderTray();
+  });
+  if ($('#mediaCaption')) $('#mediaCaption').oninput = () => { if ($('#inp')) $('#inp').value = $('#mediaCaption').value; };
+  $('#sendMedia')?.addEventListener('click', sendSelectedMedia);
+}
+async function sendSelectedMedia() {
+  if (!chat.selectedFiles.length || chat.busy) return;
+  if (chat.peer === 'ai') return toast('照片和视频目前可以发送给好友');
+  const files = chat.selectedFiles.slice(), text = $('#mediaCaption')?.value.trim() || $('#inp')?.value.trim() || '';
+  if (files.length > 6) return toast('一次最多发送 6 个文件');
+  if (files.some(f => f.size > 5 * 1024 * 1024)) return toast('单个文件不能超过 5 MB');
+  chat.busy = true; const btn = $('#sendMedia'); if (btn) { btn.disabled = true; btn.textContent = '正在发送…'; }
+  try {
+    const uploaded = [];
+    for (const item of files) {
+      const file = item.file;
+      const dataUrl = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result).split(',')[1] || ''); reader.onerror = () => reject(new Error('读取文件失败')); reader.readAsDataURL(file); });
+      const result = await api('/media', { to: chat.peer, name: file.name, mime: file.type, data: dataUrl }); uploaded.push(result.media);
+    }
+    const { message } = await api('/messages', { to: chat.peer, text, media: uploaded });
+    chat.selectedFiles.forEach(f => URL.revokeObjectURL(f.preview)); chat.selectedFiles = []; chat.tray = ''; $('#inp').value = '';
+    (chat.msgs[chat.peer] = chat.msgs[chat.peer] || []).push(message); appendMessage(message, true); mark('chat'); renderTray();
+  } catch (e) { toast(e.message); if ($('#sendMedia')) { $('#sendMedia').disabled = false; $('#sendMedia').textContent = `重试 ${files.length}`; } }
+  finally { chat.busy = false; }
+}
+async function sendSticker(sticker) {
+  if (chat.peer === 'ai') { $('#inp').value = sticker; chat.tray = ''; renderTray(); return send(); }
+  try {
+    const { message } = await api('/messages', { to: chat.peer, sticker });
+    (chat.msgs[chat.peer] = chat.msgs[chat.peer] || []).push(message); appendMessage(message, true); mark('chat'); chat.tray = ''; renderTray();
+  } catch (e) { toast(e.message); }
+}
+function addCapturedFile(file) {
+  if (!file) return;
+  if (!/^(image\/(jpeg|png|webp|gif)|video\/(mp4|webm|quicktime))$/.test(file.type)) return toast('相机输出格式暂不支持，请从相册选 JPG、PNG、MP4 或 WebM');
+  if (file.size > 5 * 1024 * 1024) return toast('文件超过 5 MB，未添加到聊天');
+  if (chat.selectedFiles.length >= 6) return toast('一次最多选择 6 个文件');
+  chat.selectedFiles.push({ file, name: file.name || (file.type.startsWith('video/') ? 'Privacy 视频' : 'Privacy 照片'), type: file.type, size: file.size, preview: URL.createObjectURL(file) });
+  chat.tray = 'attach'; renderTray();
+}
+function stopCameraStream() {
+  if (chat.cameraStream) chat.cameraStream.getTracks().forEach(track => track.stop());
+  chat.cameraStream = null;
+  const video = $('#cameraPreview'); if (video) video.srcObject = null;
+}
+function closeCamera(discard = false) {
+  chat.cameraDiscard = discard;
+  const recorder = chat.cameraRecorder; chat.cameraRecorder = null;
+  if (recorder?.state === 'recording') { try { recorder.stop(); } catch {} }
+  stopCameraStream(); const modal = $('#cameraModal'); if (modal) modal.hidden = true;
+}
+async function openCamera() {
+  const modal = $('#cameraModal');
+  if (!modal || !navigator.mediaDevices?.getUserMedia) { $('#cameraPick')?.click(); return; }
+  chat.cameraMode = 'photo'; chat.cameraDiscard = false; modal.hidden = false; updateCameraControls();
+  try {
+    chat.cameraStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: chat.cameraFacing }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+    const preview = $('#cameraPreview'); if (!preview || modal.hidden) { stopCameraStream(); return; }
+    preview.srcObject = chat.cameraStream; await preview.play().catch(() => {});
+    $('#cameraHint').textContent = '拍照会显示预览，可确认后再发送给好友';
+  } catch (e) {
+    stopCameraStream(); modal.hidden = true;
+    if (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError') toast('请允许 Privacy 使用相机，或从相册选择媒体');
+    else { toast('当前设备无法直接打开相机，已改用系统选择器'); $('#cameraPick')?.click(); }
+  }
+}
+function updateCameraControls() {
+  const modal = $('#cameraModal'); if (!modal) return;
+  $$('[data-cam-mode]', modal).forEach(b => b.classList.toggle('active', b.dataset.camMode === chat.cameraMode));
+  const capture = $('#captureCamera');
+  capture?.classList.toggle('recording', chat.cameraRecorder?.state === 'recording');
+  capture?.setAttribute('aria-label', chat.cameraRecorder?.state === 'recording' ? '停止录制' : chat.cameraMode === 'video' ? '开始录制视频' : '拍摄照片');
+  $('#cameraHint').textContent = chat.cameraRecorder?.state === 'recording' ? '正在录制 · 最长 12 秒' : chat.cameraMode === 'video' ? '视频最多录制 12 秒，点击红色按钮开始' : '轻触快门拍照';
+}
+async function captureCamera() {
+  const video = $('#cameraPreview'), stream = chat.cameraStream;
+  if (!video || !stream) return;
+  if (chat.cameraMode === 'photo') {
+    const canvas = document.createElement('canvas'), scale = Math.min(1, 1600 / Math.max(video.videoWidth, video.videoHeight));
+    canvas.width = Math.max(1, Math.round(video.videoWidth * scale)); canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
+    canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+    canvas.toBlob(blob => { if (blob) { const ext = blob.type === 'image/png' ? 'png' : 'jpg'; addCapturedFile(new File([blob], `Privacy-${Date.now()}.${ext}`, { type: blob.type || 'image/jpeg' })); closeCamera(); } else toast('拍照失败，请重试'); }, 'image/jpeg', .86);
+    return;
+  }
+  if (chat.cameraRecorder?.state === 'recording') { chat.cameraRecorder.stop(); updateCameraControls(); return; }
+  if (!window.MediaRecorder) return toast('此浏览器不支持录制视频，请从相册选择视频');
+  if (!stream.getAudioTracks().length) {
+    try { const audio = await navigator.mediaDevices.getUserMedia({ audio: true }); audio.getAudioTracks().forEach(track => stream.addTrack(track)); }
+    catch { /* video can still be recorded silently */ }
+  }
+  const mime = ['video/mp4;codecs=avc1.42E01E,mp4a.40.2','video/mp4','video/webm;codecs=vp8,opus','video/webm'].find(t => MediaRecorder.isTypeSupported(t)) || '';
+  try {
+    chat.cameraDiscard = false; chat.cameraChunks = [];
+    const recorder = new MediaRecorder(stream, mime ? { mimeType: mime, videoBitsPerSecond: 500000, audioBitsPerSecond: 64000 } : { videoBitsPerSecond: 500000 });
+    chat.cameraRecorder = recorder;
+    recorder.ondataavailable = e => { if (e.data?.size) chat.cameraChunks.push(e.data); };
+    recorder.onstop = () => {
+      const type = recorder.mimeType || mime || 'video/webm', blob = new Blob(chat.cameraChunks, { type });
+      chat.cameraRecorder = null; const discard = chat.cameraDiscard; chat.cameraChunks = [];
+      if (!discard) addCapturedFile(new File([blob], `Privacy-${Date.now()}.${type.includes('mp4') ? 'mp4' : 'webm'}`, { type }));
+      closeCamera(discard); updateCameraControls();
+    };
+    recorder.start(500); updateCameraControls();
+    chat.recordTimer = setTimeout(() => { if (recorder.state === 'recording') recorder.stop(); }, 12000);
+  } catch { toast('无法开始录制，请检查相机权限'); }
+}
+async function flipCamera() {
+  const old = chat.cameraStream, audioTracks = old?.getAudioTracks() || [];
+  if (old) old.getVideoTracks().forEach(track => track.stop());
+  chat.cameraFacing = chat.cameraFacing === 'environment' ? 'user' : 'environment';
+  try {
+    const next = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: chat.cameraFacing }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+    audioTracks.forEach(track => next.addTrack(track)); chat.cameraStream = next;
+    $('#cameraPreview').srcObject = next; await $('#cameraPreview').play().catch(() => {});
+  } catch { toast('无法切换摄像头'); }
+}
+function appendMessage(m, mine) {
+  const ms = $('#ms'); if (!ms) return;
+  ms.querySelector('.empty')?.remove(); ms.insertAdjacentHTML('beforeend', messageHtml(m, mine)); ms.scrollTop = ms.scrollHeight; loadMediaNodes(ms);
+}
+function startVoiceDraft() {
+  const Speech = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!Speech) return toast('此浏览器暂不支持语音识别；可用系统键盘的麦克风输入');
+  if (!window.isSecureContext) return toast('语音识别需要 HTTPS 安全连接');
+  if (!confirm('语音将由浏览器的语音识别服务处理。识别内容只会填入输入框，检查后再发送；请勿口述密码等敏感信息。继续吗？')) return;
+  const recognition = new Speech(); recognition.lang = accountSettings?.language || 'zh-CN'; recognition.interimResults = true; recognition.continuous = false;
+  const input = $('#inp'), original = input?.value || ''; if (!input) return;
+  const button = $('#voiceBtn'); button?.classList.add('recording');
+  recognition.onresult = event => { let draft = ''; for (let i=0;i<event.results.length;i++) draft += event.results[i][0].transcript; input.value = [original, draft].filter(Boolean).join(' '); };
+  recognition.onerror = event => toast(event.error === 'not-allowed' ? '请允许麦克风权限后重试' : '语音识别暂不可用，请检查麦克风权限');
+  recognition.onend = () => { button?.classList.remove('recording'); input.focus(); };
+  try { recognition.start(); toast('正在听，请开始说话'); } catch { button?.classList.remove('recording'); toast('语音识别已在运行'); }
 }
 async function renderPane() {
   const cp = $('#cp'); if (!cp) return;
@@ -217,23 +425,57 @@ async function renderPane() {
   if (isAI) msgs = aiHist().map(m => ({ me: m.role === 'user', text: m.content }));
   else {
     if (!chat.msgs[chat.peer]) { try { chat.msgs[chat.peer] = (await api('/messages?with=' + encodeURIComponent(chat.peer))).messages; } catch { chat.msgs[chat.peer] = []; } }
-    msgs = chat.msgs[chat.peer].map(m => ({ me: m.from === me.name, text: m.text }));
+    msgs = chat.msgs[chat.peer].map(m => ({ ...m, me: m.from === me.name }));
   }
-  cp.innerHTML = `<div class="chead"><button class="btn sm ghost back" id="bk">←</button><span class="av ${isAI ? 'ai' : ''}" style="width:32px;height:32px">${isAI ? '🤖' : esc(chat.peer[0])}</span><span>${isAI ? '小伴' : esc(chat.peer)}${isAI ? '<small id="aiState" class="ai-state">正在检查 AI 服务…</small>' : ''}</span></div>
-    <div class="msgs" id="ms">${msgs.map(m => `<div class="bub ${m.me ? 'me' : ''}">${fmtMsg(m.text)}</div>`).join('') || '<div class="empty">还没有消息，打个招呼吧 👋</div>'}</div>
-    <div class="sendbar"><input type="text" id="inp" placeholder="${isAI ? '问小伴任何事…' : '说点什么…'}" autocomplete="off"><button class="btn" id="snd">发送</button></div>`;
+  const friendOnline = !isAI && !!chat.friends.find(f => f.name === chat.peer)?.online;
+  cp.innerHTML = `<header class="chead"><button class="chat-icon-btn back" id="bk" aria-label="返回聊天列表">${chatIcon('back')}</button><span class="av ${isAI ? 'ai' : ''}">${isAI ? '✦' : esc(chat.peer[0])}${friendOnline ? '<i class="on"></i>' : ''}</span><span class="chat-title">${isAI ? '小伴' : esc(chat.peer)}<small>${isAI ? '<span id="aiState" class="ai-state">正在检查 AI 服务…</span>' : `<span class="status-live ${friendOnline ? '' : 'offline'}"></span>${friendOnline ? '在线' : '离线'} · 注重隐私`}</small></span><div class="chat-head-actions"><button class="chat-icon-btn" id="findMsg" aria-label="搜索聊天记录" title="搜索聊天记录">${chatIcon('search')}</button><button class="chat-icon-btn" id="chatDetails" aria-label="聊天详情" title="聊天详情">${chatIcon('more')}</button></div></header>
+    <div class="chat-find" id="chatFind" hidden><input id="findInput" type="search" placeholder="搜索这段聊天"><span id="findCount"></span></div>
+    <div class="chat-privacy-note"><span class="privacy-lock">▣</span><span><b>注重隐私</b><small>${isAI ? 'AI 对话由应用服务处理' : '好友私聊 · 请勿发送密码等高度敏感信息'}</small></span></div>
+    <div class="msgs" id="ms">${msgs.map(m => messageHtml(m, m.me)).join('') || '<div class="empty"><span class="empty-lock">▣</span><b>开始一段新对话</b><small>发送消息、贴纸、照片或视频</small></div>'}</div>
+    <div class="compose-wrap"><div class="chat-composer"><button class="chat-icon-btn attach-btn" id="attachBtn" aria-label="添加附件">${chatIcon('attach')}</button><input type="text" id="inp" placeholder="${isAI ? '问小伴任何事…' : '消息…'}" autocomplete="off"><button class="chat-icon-btn" id="voiceBtn" aria-label="语音转文字" title="语音转文字">◉</button><button class="chat-icon-btn" id="stickerBtn" aria-label="贴纸">${chatIcon('sticker')}</button><button class="chat-icon-btn" id="cameraBtn" aria-label="拍摄照片">${chatIcon('camera')}</button><button class="send-round" id="snd" aria-label="发送">${chatIcon('send')}</button></div><div class="composer-note">${isAI ? 'AI 对话' : '<span class="tiny-lock">▣</span> 注重隐私'}</div></div>
+    <div class="chat-tray" id="chatTray" hidden></div><input id="galleryPick" class="visually-hidden" type="file" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/quicktime" multiple><input id="cameraPick" class="visually-hidden" type="file" accept="image/*" capture="environment">`;
   const ms = $('#ms'); ms.scrollTop = ms.scrollHeight;
+  loadMediaNodes(ms);
   if (isAI && me) api('/health').then(h => { const state=$('#aiState'); if(!state)return; state.textContent=h.aiConfigured?`AI 服务已配置 · ${h.aiProvider}`:'AI 尚未接入：管理员需在 Render 环境变量添加 GH_MODELS_TOKEN 或 ANTHROPIC_API_KEY'; state.classList.toggle('warning',!h.aiConfigured); }).catch(() => { const state=$('#aiState'); if(state)state.textContent='暂时无法检查 AI 服务状态'; });
   $('#bk').onclick = () => { chat.open = false; viewChat(); };
   const inp = $('#inp'); inp.onkeydown = e => { if (e.key === 'Enter' && !e.isComposing) send(); };
   $('#snd').onclick = send;
+  $('#attachBtn').onclick = () => { chat.tray = chat.tray === 'attach' ? '' : 'attach'; renderTray(); };
+  $('#stickerBtn').onclick = () => { chat.tray = chat.tray === 'stickers' ? '' : 'stickers'; renderTray(); };
+  $('#cameraBtn').onclick = () => $('#cameraPick').click();
+  $('#voiceBtn').onclick = () => startVoiceDraft();
+  $('#galleryPick').onchange = $('#cameraPick').onchange = e => {
+    const chosen = [...(e.target.files || [])]; e.target.value = '';
+    const accepted = chosen.filter(f => /^(image\/(jpeg|png|webp|gif)|video\/(mp4|webm|quicktime))$/.test(f.type));
+    if (accepted.length !== chosen.length) toast('有文件格式暂不支持');
+    if (chat.selectedFiles.length + accepted.length > 6) { toast('一次最多选择 6 个文件'); return; }
+    for (const file of accepted) {
+      if (file.size > 5 * 1024 * 1024) { toast(`${file.name} 超过 5 MB，未添加`); continue; }
+      chat.selectedFiles.push({ file, name: file.name, type: file.type, size: file.size, preview: URL.createObjectURL(file) });
+    }
+    chat.tray = 'attach'; renderTray();
+  };
+  $('#findMsg').onclick = () => { const bar=$('#chatFind'); bar.hidden=!bar.hidden; if(!bar.hidden)$('#findInput').focus(); else { $$('.msg-row').forEach(x=>x.hidden=false); $('#findCount').textContent=''; } };
+  $('#findInput').oninput = () => { const q=$('#findInput').value.trim().toLowerCase(); let count=0; $$('.msg-row').forEach(row=>{const hit=!q||(row.dataset.messageText||'').toLowerCase().includes(q);row.hidden=!hit;if(hit&&q)count++;}); $('#findCount').textContent=q?`${count} 条`:''; };
+  $('#chatDetails').onclick = () => {
+    const old = $('#chatActionMenu'); if (old) { old.remove(); return; }
+    const menu = document.createElement('div'); menu.id = 'chatActionMenu'; menu.className = 'chat-action-menu';
+    menu.innerHTML = `<button data-action="search">${chatIcon('search')}搜索聊天记录</button><button data-action="media">${chatIcon('album')}发送照片或视频</button><button data-action="privacy">${chatIcon('sticker')}注重隐私</button>`;
+    cp.appendChild(menu);
+    $('[data-action="search"]', menu).onclick = () => { menu.remove(); $('#findMsg').click(); };
+    $('[data-action="media"]', menu).onclick = () => { menu.remove(); chat.tray = 'attach'; renderTray(); };
+    $('[data-action="privacy"]', menu).onclick = () => { menu.remove(); toast('聊天文件由应用服务器处理，请勿发送密码等高度敏感资料'); };
+    const closeMenu = e => { if (!menu.contains(e.target) && e.target !== $('#chatDetails')) { menu.remove(); document.removeEventListener('click', closeMenu); } };
+    setTimeout(() => document.addEventListener('click', closeMenu), 0);
+  };
   if (innerWidth > 760) inp.focus();
 }
 function appendBub(text, mine, cls = '') {
   const ms = $('#ms'); if (!ms) return null;
   const e = ms.querySelector('.empty'); if (e) e.remove();
-  const b = document.createElement('div'); b.className = 'bub ' + (mine ? 'me ' : '') + cls; b.innerHTML = fmtMsg(text);
-  ms.appendChild(b); ms.scrollTop = ms.scrollHeight; return b;
+  const row = document.createElement('div'); row.className = 'msg-row ' + (mine ? 'mine' : '');
+  const b = document.createElement('div'); b.className = 'bub ' + (mine ? 'me ' : '') + cls; b.innerHTML = `<div class="message-text">${fmtMsg(text)}</div><span class="msg-meta">${new Date().toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'})}</span>`;
+  row.appendChild(b); ms.appendChild(row); ms.scrollTop = ms.scrollHeight; return b;
 }
 async function send() {
   const inp = $('#inp'); const text = inp.value.trim(); if (!text || chat.busy) return;
@@ -253,7 +495,7 @@ async function send() {
   } else {
     try {
       const { message } = await api('/messages', { to: chat.peer, text });
-      (chat.msgs[chat.peer] = chat.msgs[chat.peer] || []).push(message); appendBub(text, true); mark('chat');
+      (chat.msgs[chat.peer] = chat.msgs[chat.peer] || []).push(message); appendMessage(message, true); mark('chat');
     } catch (e) { toast(e.message); }
   }
 }
@@ -261,6 +503,7 @@ function updateDot() { $('#dot').hidden = !Object.values(chat.unread).some(n => 
 function connectStream() {
   if (es) es.close(); if (!me) return;
   es = new EventSource('/api/stream?token=' + token);
+  es.addEventListener('scheduled-sent', e => { const data=JSON.parse(e.data); if (tab === 'more') viewScheduled(); toast('定时消息已发送'); });
   es.addEventListener('account-deleted', () => { if(me)clearLocalAccountData(me.name);localStorage.removeItem('qb_token');localStorage.removeItem('qb_last_user');token='';me=null;accountSettings=null;es?.close();toast('账号已删除');go('home'); });
   es.addEventListener('game-invite', e => showGameInvite(JSON.parse(e.data)));
   es.addEventListener('game-update', e => {
@@ -271,7 +514,7 @@ function connectStream() {
   es.addEventListener('msg', e => {
     const m = JSON.parse(e.data);
     (chat.msgs[m.from] = chat.msgs[m.from] || []).push(m);
-    if (tab === 'chat' && chat.peer === m.from) appendBub(m.text, false);
+    if (tab === 'chat' && chat.peer === m.from) appendMessage(m, false);
     else { chat.unread[m.from] = (chat.unread[m.from] || 0) + 1; updateDot(); const n = accountSettings?.notifications; if (n?.enabled !== false && n?.messages !== false) { toast(n?.preview === 'none' ? '收到一条新消息' : n?.preview === 'all' ? `${m.from}：${m.text.slice(0, 20)}` : `${m.from} 发来新消息`); if (document.hidden && 'Notification' in window && Notification.permission === 'granted') new Notification('Privacy', { body: n?.preview === 'none' ? '收到一条新消息' : n?.preview === 'all' ? `${m.from}：${m.text.slice(0, 80)}` : `${m.from} 发来新消息`, silent: n?.sound === false }); } if (tab === 'chat') viewChat(); }
   });
   es.addEventListener('friend', e => { const who = JSON.parse(e.data).name; if (accountSettings?.notifications?.enabled !== false && accountSettings?.notifications?.security !== false) toast(who + ' 加你为好友了'); if (tab === 'chat') viewChat(); });
@@ -532,7 +775,73 @@ function react(box, end) {
   return () => clearTimeout(timer);
 }
 
-/* ===== 工具 ===== */
+/* ===== 更多：实用工具与新功能 ===== */
+function viewMore() {
+  $('#main').innerHTML = `<div class="wrap"><p class="eyebrow">PRIVACY · MORE</p><h1>更多</h1><p class="sub">把常用工具收进一个安静、好找的空间。</p>
+    <div class="more-grid">
+      <button class="more-card" data-more="search"><span class="more-icon">⌕</span><b>全局搜索</b><small>查找聊天、备忘与待办</small></button>
+      <button class="more-card" data-more="schedule"><span class="more-icon">◷</span><b>定时消息</b><small>选好时间，准时送达好友</small></button>
+      <button class="more-card" data-more="contact"><span class="more-icon">▦</span><b>隐私联系卡</b><small>用 Privacy ID 分享你的名片</small></button>
+      <button class="more-card" data-more="tools"><span class="more-icon">✳</span><b>日常工具</b><small>备忘、待办、计算器与专注钟</small></button>
+      <button class="more-card" data-more="games"><span class="more-icon">◇</span><b>一起玩</b><small>小游戏与好友对局</small></button>
+      <button class="more-card" data-more="stickers"><span class="more-icon">☺</span><b>表情包库</b><small>打开聊天贴纸面板</small></button>
+      <div class="more-note"><span>▣</span><span><b>注重隐私</b><small>消息搜索只查你参与的聊天；联系卡默认只含 Privacy ID。</small></span></div>
+    </div></div>`;
+  $$('[data-more]').forEach(b => b.onclick = () => {
+    const action=b.dataset.more;
+    if (action==='search') return go('search');
+    if (action==='schedule') return viewScheduled();
+    if (action==='contact') return viewContactCard();
+    if (action==='tools') { tool='todo'; return go('tools'); }
+    if (action==='games') { tab='games'; return render(); }
+    if (action==='stickers') { chat.peer='ai'; chat.open=true; go('chat'); setTimeout(()=>$('#stickerBtn')?.click(),0); }
+  });
+}
+async function viewGlobalSearch() {
+  if (!me) return showAuth('login');
+  $('#main').innerHTML = `<div class="wrap feature-page"><button class="btn sm ghost" id="featureBack">← 更多</button><p class="eyebrow">FIND IT FAST</p><h1>全局搜索</h1><p class="sub">在私聊、备忘和待办中查找关键词。</p><input id="globalQuery" type="search" maxlength="120" placeholder="搜索内容…" autocomplete="off"><div id="searchResults" class="feature-results"><p class="sub">输入关键词开始搜索</p></div></div>`;
+  $('#featureBack').onclick=()=>go('more'); let timer;
+  $('#globalQuery').oninput=()=>{clearTimeout(timer);timer=setTimeout(async()=>{
+    const q=$('#globalQuery').value.trim(), box=$('#searchResults'); if(!q){box.innerHTML='<p class="sub">输入关键词开始搜索</p>';return;}
+    const needle=q.toLowerCase(), local=[];
+    store.get('notes',[]).forEach(n=>{if(`${n.title} ${n.content}`.toLowerCase().includes(needle))local.push({type:'note',title:n.title||'备忘',text:n.content, t:n.updatedAt});});
+    store.get('todos',[]).forEach(t=>{if(t.t.toLowerCase().includes(needle))local.push({type:'todo',title:'待办',text:t.t,t:''});});
+    aiHist().filter(x=>x.content?.toLowerCase().includes(needle)).forEach(x=>local.push({type:'ai',title:'小伴对话（仅本机）',text:x.content,t:''}));
+    let remote=[]; try { remote=(await api('/search?q='+encodeURIComponent(q))).results||[]; } catch(e) { toast(e.message); }
+    const rows=[...remote.map(x=>({...x,title:`与 ${x.peer} 的聊天`,kind:'message'})),...local].slice(0,100);
+    box.innerHTML=rows.length?rows.map((x,i)=>`<button class="result-card" data-result="${i}"><span class="result-kind">${x.kind==='message'?'聊天':x.type==='note'?'备忘':x.type==='todo'?'待办':'小伴'}</span><b>${esc(x.title||'聊天记录')}</b><span>${esc(x.text||'')}</span><small>${x.t?esc(new Date(x.t).toLocaleString()):'保存在此设备'}</small></button>`).join(''):'<div class="card sub">没有找到匹配内容</div>';
+    $$('[data-result]',box).forEach(b=>b.onclick=()=>{const x=rows[+b.dataset.result];if(x.kind==='message'){chat.peer=x.peer;chat.open=true;go('chat');}else if(x.type==='note'){tool='note';noteFilter=q;tab='tools';render();}else if(x.type==='todo'){tool='todo';tab='tools';render();}else{chat.peer='ai';chat.open=true;go('chat');}});
+  },250);};
+}
+async function viewScheduled() {
+  if(!me)return showAuth('login');
+  $('#main').innerHTML='<div class="wrap feature-page"><button class="btn sm ghost" id="featureBack">← 更多</button><p class="eyebrow">SEND WHEN IT MATTERS</p><h1>定时消息</h1><p class="sub">定时消息会在服务器运行时发送。发送时间 1 分钟至 30 天内。</p><div id="scheduleForm" class="card schedule-form"><p class="sub">正在读取好友…</p></div><h2>待发送</h2><div id="scheduleList" class="feature-results"></div></div>';
+  $('#featureBack').onclick=()=>go('more');
+  let friends=[];try{friends=(await api('/friends')).friends;}catch(e){toast(e.message);}
+  $('#scheduleForm').innerHTML=friends.length?`<label>发送给<select id="scheduleTo">${friends.map(f=>`<option value="${esc(f.name)}">${esc(f.name)}</option>`).join('')}</select></label><label>发送时间<input id="scheduleAt" type="datetime-local"></label><label>消息<textarea id="scheduleText" rows="3" maxlength="1000" placeholder="写下想发送的内容"></textarea></label><button class="btn" id="scheduleSave">安排发送</button>`:'<p class="sub">先添加一位好友，才能安排定时消息。</p>';
+  const at=$('#scheduleAt'); if(at){const min=new Date(Date.now()+2*60000);min.setSeconds(0,0);at.min=new Date(min.getTime()-min.getTimezoneOffset()*60000).toISOString().slice(0,16);}
+  if($('#scheduleSave'))$('#scheduleSave').onclick=async()=>{const value=$('#scheduleAt').value;if(!value)return toast('请选择发送时间');try{await api('/messages/schedule',{to:$('#scheduleTo').value,text:$('#scheduleText').value,at:new Date(value).getTime()});toast('已安排发送');viewScheduled();}catch(e){toast(e.message);}};
+  try{const rows=(await api('/messages/scheduled')).scheduled;const list=$('#scheduleList');list.innerHTML=rows.length?rows.map(x=>`<article class="result-card schedule-row"><b>发给 ${esc(x.to)}</b><span>${esc(x.text)}</span><small>${new Date(x.at).toLocaleString()}</small><button class="btn sm ghost" data-cancel="${esc(x.id)}">取消</button></article>`).join(''):'<div class="card sub">暂时没有待发送消息</div>';$$('[data-cancel]',list).forEach(b=>b.onclick=async()=>{try{await apiDelete('/messages/scheduled/'+encodeURIComponent(b.dataset.cancel));viewScheduled();toast('已取消');}catch(e){toast(e.message);}});}catch(e){toast(e.message);}
+}
+function viewContactCard() {
+  if(!me)return showAuth('login');
+  const shareUrl=new URL(location.pathname,location.origin);shareUrl.searchParams.set('addPrivacy',me.name);
+  $('#main').innerHTML=`<div class="wrap feature-page"><button class="btn sm ghost" id="featureBack">← 更多</button><p class="eyebrow">YOUR PRIVACY ID</p><h1>隐私联系卡</h1><p class="sub">仅分享你选择的信息。默认只展示 Privacy ID，不包含邮箱或手机号。</p><div class="contact-card"><div id="contactQr" class="contact-qr"></div><div><span class="eyebrow">PRIVACY ID</span><h2>${esc(me.name)}</h2><p class="sub">注重隐私 · 通过 Privacy ID 找到我</p></div></div><div class="row contact-actions"><button class="btn" id="copyPrivacyId">复制 Privacy ID</button><button class="btn ghost" id="sharePrivacyCard">分享联系卡</button></div><p class="sub privacy-footnote">二维码由本机生成，不会上传你的联系信息。扫描后仍需你确认添加。</p></div>`;
+  $('#featureBack').onclick=()=>go('more');
+  try{const qr=qrcode(0,'M');qr.addData(shareUrl.toString(),'Byte');qr.make();$('#contactQr').innerHTML=qr.createImgTag(6,4);const img=$('img',$('#contactQr'));if(img){img.alt='Privacy ID 联系二维码';img.style.imageRendering='pixelated';}}catch{ $('#contactQr').textContent='二维码暂不可用'; }
+  $('#copyPrivacyId').onclick=async()=>{try{await navigator.clipboard.writeText(me.name);toast('已复制 Privacy ID');}catch{toast('复制失败，请手动记录：'+me.name);}};
+  $('#sharePrivacyCard').onclick=async()=>{try{if(navigator.share)await navigator.share({title:'Privacy 联系卡',text:`通过 Privacy ID ${me.name} 找到我`,url:shareUrl.toString()});else{await navigator.clipboard.writeText(shareUrl.toString());toast('联系卡链接已复制');}}catch(e){if(e.name!=='AbortError')toast('分享暂不可用');}};
+}
+async function handlePendingPrivacyInvite() {
+  const params=new URLSearchParams(location.search), scanned=params.get('addPrivacy');
+  if(scanned){sessionStorage.setItem('privacy_pending_add',scanned);params.delete('addPrivacy');history.replaceState({},'',location.pathname+(params.size?'?'+params.toString():'')+location.hash);}
+  const name=sessionStorage.getItem('privacy_pending_add'); if(!name||!me)return;
+  sessionStorage.removeItem('privacy_pending_add');
+  if(name===me.name)return toast('这是你自己的 Privacy ID');
+  if(!confirm(`通过 Privacy ID「${name}」添加这位用户为好友？`))return;
+  try{await api('/friends/add',{name});toast('已添加好友：'+name);}catch(e){toast(e.message);}
+}
+/* ===== 日常工具 ===== */
 let tool = 'todo';
 let noteFilter = '';
 let activeNoteId = null;
@@ -628,7 +937,7 @@ function viewMe() {
       <div class="task"><span class="sp">安装到桌面 / 手机主屏幕</span><span class="sub">浏览器菜单 → 安装「Privacy」</span></div>
       <div class="task"><span class="sp">清除聊天记录（小伴）</span><button class="btn sm ghost" id="clr">清除</button></div>
       <div class="task"><span class="sp">${me ? '退出登录' : '登录 / 注册，解锁好友聊天和排行榜'}</span><button class="btn sm" id="lo">${me ? '退出' : '登录'}</button></div></div>
-    <p class="sub" style="margin-top:20px">Privacy v2.3.3 · 隐私优先的聊天空间</p></div>`;
+    <p class="sub" style="margin-top:20px">Privacy v2.3.6 · 注重隐私的聊天空间</p></div>`;
   $('#clr').onclick = () => { store.set('aihist', [AI_HELLO]); toast('已清除'); };
   $('#openSettings').onclick = viewSettings;
   $('#lo').onclick = () => { if (me) { localStorage.removeItem('qb_token'); token = ''; me = null; if (es) es.close(); go('home'); showAuth(); } else showAuth(); };
@@ -636,7 +945,7 @@ function viewMe() {
 function clearLocalAccountData(name) { const prefix='qb_'+name+'_'; for(let i=localStorage.length-1;i>=0;i--){const k=localStorage.key(i);if(k&&k.startsWith(prefix))localStorage.removeItem(k);} }
 
 const LANGS = [['zh-CN','简体中文'],['en','English'],['ja','日本語'],['de','Deutsch'],['fr','Français'],['es','Español'],['ko','한국어']];
-const NAV_I18N = { 'zh-CN':['今天','聊天','游戏','工具','我的'],en:['Today','Chat','Games','Tools','Profile'],ja:['今日','チャット','ゲーム','ツール','マイページ'],de:['Heute','Chat','Spiele','Tools','Profil'],fr:["Aujourd’hui",'Chat','Jeux','Outils','Profil'],es:['Hoy','Chat','Juegos','Herramientas','Perfil'],ko:['오늘','채팅','게임','도구','내 정보'] };
+const NAV_I18N = { 'zh-CN':['今天','聊天','更多','我的','搜索'],en:['Today','Chat','More','Profile','Search'],ja:['今日','チャット','その他','マイページ','検索'],de:['Heute','Chat','Mehr','Profil','Suche'],fr:["Aujourd’hui",'Chat','Plus','Profil','Recherche'],es:['Hoy','Chat','Más','Perfil','Buscar'],ko:['오늘','채팅','더보기','내 정보','검색'] };
 function applyLanguage(lang) { const labels=NAV_I18N[lang]||NAV_I18N['zh-CN']; $$('#nav button').forEach((b,i)=>{const s=$('span',b);if(s)s.textContent=labels[i]}); document.documentElement.lang=lang||'zh-CN'; }
 async function viewSettings() {
   const main = $('#main');
@@ -691,26 +1000,30 @@ async function saveSettings() {
 /* ===== 登录 ===== */
 function showAuth() {
   if (STANDALONE) return toast('好友聊天需要联网版，单文件版暂不支持');
-  const a = $('#auth'); a.hidden = false; let mode = arguments[0] || 'login', loginMethod = 'name', verifiedEmail = '', verifiedPhone = '', recoveryVerified = false;
+  const a = $('#auth'); a.hidden = false; let mode = arguments[0] || 'login', loginMethod = 'name', registrationMethod = 'id', verifiedEmail = '', verifiedPhone = '', recoveryVerified = false;
   const countries = [['CN','中国','+86'],['US','美国','+1'],['CA','加拿大','+1'],['GB','英国','+44'],['JP','日本','+81'],['DE','德国','+49'],['FR','法国','+33'],['AU','澳大利亚','+61'],['KR','韩国','+82'],['SG','新加坡','+65'],['HK','中国香港','+852'],['TW','中国台湾','+886'],['IN','印度','+91'],['BR','巴西','+55'],['RU','俄罗斯','+7'],['IT','意大利','+39'],['ES','西班牙','+34'],['NL','荷兰','+31'],['AE','阿联酋','+971'],['TH','泰国','+66']];
   const countryOptions = () => countries.map(([cc,label,dial]) => `<option value="${dial}" ${cc==='CN'?'selected':''}>${label} ${dial}</option>`).join('');
   const fullPhone = (select, input) => { const raw = $(input)?.value.trim() || ''; return raw.startsWith('+') ? raw.replace(/[\s()-]/g,'') : ($(select)?.value || '+86') + raw.replace(/\D/g,'').replace(/^0+/, ''); };
   const paint = () => {
-    const registerFields = mode === 'reg' ? `<div class="auth-intro"><b>以隐私为先</b><p>邮箱和手机号用于验证与找回密码，不会展示在好友资料中；验证码由邮件和短信服务商发送。当前版本聊天内容会保存在应用服务器，请勿发送高度敏感信息。</p></div>
-      <input type="email" id="authEmail" placeholder="邮箱地址" autocomplete="email"><div class="otp-row"><input type="text" id="emailCode" placeholder="邮箱验证码" inputmode="numeric" maxlength="6"><button class="btn sm ghost" id="sendEmail">获取邮箱码</button></div>
-      <div class="phone-entry"><select id="regDial" aria-label="国家或地区区号">${countryOptions()}</select><input type="tel" id="authPhone" placeholder="手机号" autocomplete="tel"></div><div class="otp-row"><input type="text" id="phoneCode" placeholder="短信验证码" inputmode="numeric" maxlength="6"><button class="btn sm ghost" id="sendPhone">获取短信码</button></div>` : '';
+    const registerFields = mode === 'reg' ? `<div class="reg-heading"><span class="eyebrow">CREATE YOUR ACCOUNT</span><h2>创建账号</h2><p>选一种注册方式，只填写当前方式需要的信息。</p></div>
+      <label class="reg-method-label" for="regMethod">选择注册方式</label><select id="regMethod" class="reg-method"><option value="id" ${registrationMethod==='id'?'selected':''}>Privacy ID</option><option value="email" ${registrationMethod==='email'?'selected':''}>邮箱地址</option><option value="phone" ${registrationMethod==='phone'?'selected':''}>手机号</option></select>
+      <input type="text" id="un" placeholder="设置专属 Privacy ID" autocomplete="username" maxlength="12" value="${esc(localStorage.getItem('qb_last_user') || '')}"><input type="password" id="pw" placeholder="设置密码（至少 8 位）" autocomplete="new-password" minlength="8">
+      <div class="reg-contact" id="regEmailFields" ${registrationMethod!=='email'?'hidden':''}><input type="email" id="authEmail" placeholder="邮箱地址" autocomplete="email"><div class="otp-row"><input type="text" id="emailCode" placeholder="邮箱验证码" inputmode="numeric" maxlength="6"><button class="btn sm ghost" id="sendEmail">获取验证码</button></div></div>
+      <div class="reg-contact" id="regPhoneFields" ${registrationMethod!=='phone'?'hidden':''}><div class="phone-entry"><select id="regDial" aria-label="国家或地区区号">${countryOptions()}</select><input type="tel" id="authPhone" placeholder="手机号" autocomplete="tel"></div><div class="otp-row"><input type="text" id="phoneCode" placeholder="短信验证码" inputmode="numeric" maxlength="6"><button class="btn sm ghost" id="sendPhone">获取验证码</button></div></div>
+      <p class="reg-hint" id="regHint">${registrationMethod==='id'?'Privacy ID 可直接注册；之后可在设置中绑定邮箱或手机号，方便找回账号。':registrationMethod==='email'?'邮箱仅用于验证与找回，不会展示给好友。':'手机号仅用于验证与找回，不会展示给好友。'}</p>
+      <div class="auth-intro"><b>隐私优先</b><p>邮箱或手机号只用于账号验证，不显示在好友资料中。聊天内容目前保存在应用服务器，请勿发送高度敏感信息。</p></div>` : '';
     const recoveryFields = mode === 'recover' ? `<div class="row"><button class="pill on" id="recEmail">邮箱</button><button class="pill" id="recPhone">手机号</button></div><input type="email" id="recoverAddress" placeholder="注册时绑定的邮箱" autocomplete="email"><div class="phone-entry" id="recoverPhoneEntry" hidden><select id="recoverDial" aria-label="国家或地区区号">${countryOptions()}</select><input type="tel" id="recoverPhone" placeholder="注册时绑定的手机号" autocomplete="tel"></div><div class="otp-row"><input type="text" id="recoverCode" placeholder="验证码" inputmode="numeric" maxlength="6"><button class="btn sm ghost" id="sendRecover">获取验证码</button></div><input type="password" id="newPass" placeholder="新密码（至少 8 位）" autocomplete="new-password" minlength="8">` : '';
     const loginFields = mode === 'login' ? `<div class="auth-methods"><button class="pill ${loginMethod==='name'?'on':''}" data-login="name">Privacy ID</button><button class="pill ${loginMethod==='email'?'on':''}" data-login="email">邮箱</button><button class="pill ${loginMethod==='phone'?'on':''}" data-login="phone">手机号</button></div>${loginMethod==='phone'?`<div class="phone-entry"><select id="loginDial" aria-label="国家或地区区号">${countryOptions()}</select><input type="tel" id="loginId" placeholder="手机号" autocomplete="tel"></div>`:`<input type="${loginMethod==='email'?'email':'text'}" id="loginId" placeholder="${loginMethod==='email'?'邮箱地址':'Privacy ID / 昵称'}" autocomplete="${loginMethod==='email'?'email':'username'}">`}` : '';
-    a.innerHTML = `<div class="box"><img src="/logo.svg" alt="Privacy"><h1>Privacy</h1><p class="sub">聊天、AI 助手、小游戏、日常工具，一个就够</p>
+    a.innerHTML = `<div class="box ${mode==='reg'?'register-box':''}">${mode==='reg'?'':`<img src="/logo.svg" alt="Privacy"><h1>Privacy</h1><p class="sub">聊天、AI 助手、小游戏、日常工具，一个就够</p>`}
       <div class="row" style="justify-content:center"><button class="pill ${mode === 'login' ? 'on' : ''}" data-m="login">登录</button><button class="pill ${mode === 'reg' ? 'on' : ''}" data-m="reg">注册</button></div>
-      ${mode==='reg'||mode==='recover'?`<input type="text" id="un" placeholder="${mode==='reg'?'设置 Privacy ID（好友通过它找到你）':'Privacy ID / 昵称'}" maxlength="12" autocomplete="username" value="${esc(localStorage.getItem('qb_last_user') || '')}">`:loginFields}
-      ${mode !== 'recover' ? `<input type="password" id="pw" placeholder="${mode==='login'?'密码':'新密码（至少 8 位）'}" autocomplete="${mode==='login'?'current-password':'new-password'}" ${mode==='reg'?'minlength="8"':''}>${registerFields}` : recoveryFields}
+      ${mode==='reg'?registerFields:mode==='recover'?`<input type="text" id="un" placeholder="Privacy ID / 昵称" maxlength="12" autocomplete="username" value="${esc(localStorage.getItem('qb_last_user') || '')}">${recoveryFields}`:`${loginFields}<input type="password" id="pw" placeholder="密码" autocomplete="current-password">`}
       <div class="err" id="er"></div><button class="btn" id="go">${mode === 'login' ? '登录' : mode==='reg' ? '验证并注册' : '重置密码'}</button>
       ${mode==='login' ? '<button class="btn ghost" id="forgot">忘记密码？</button><button class="btn text-guest" id="sk">以游客身份进入（有限体验）</button>' : ''}</div>`;
     $$('[data-m]', a).forEach(b => b.onclick = () => { mode = b.dataset.m; paint(); });
     $$('[data-login]', a).forEach(b => b.onclick = () => { loginMethod = b.dataset.login; paint(); });
     const status = t => { const e=$('#er'); if(e)e.textContent=t; };
     if (mode === 'reg') {
+      $('#regMethod').onchange = () => { registrationMethod=$('#regMethod').value; $('#regEmailFields').hidden=registrationMethod!=='email'; $('#regPhoneFields').hidden=registrationMethod!=='phone'; $('#regHint').textContent=registrationMethod==='id'?'Privacy ID 可直接注册；之后可在设置中绑定邮箱或手机号，方便找回账号。':registrationMethod==='email'?'邮箱仅用于验证与找回，不会展示给好友。':'手机号仅用于验证与找回，不会展示给好友。'; status(''); };
       $('#sendEmail').onclick = async () => { const address=$('#authEmail').value.trim().toLowerCase(); try { await api('/otp/send',{purpose:'register',channel:'email',address}); status('邮箱验证码已发送，请查收邮件'); } catch(e){status(e.message);} };
       $('#sendPhone').onclick = async () => { const address=fullPhone('#regDial','#authPhone'); try { await api('/otp/send',{purpose:'register',channel:'phone',address}); status('短信验证码已发送'); } catch(e){status(e.message);} };
     }
@@ -733,12 +1046,12 @@ function showAuth() {
         let r;
         if(mode==='login') { const identifier=loginMethod==='phone'?fullPhone('#loginDial','#loginId'):$('#loginId').value.trim(); r=await api('/login',{identifier,method:loginMethod,pass}); }
         else {
-          const email=$('#authEmail').value.trim().toLowerCase(),phone=fullPhone('#regDial','#authPhone');
-          if(verifiedEmail!==email){await api('/otp/verify',{purpose:'register',channel:'email',address:email,code:$('#emailCode').value.trim()});verifiedEmail=email;}
-          if(verifiedPhone!==phone){await api('/otp/verify',{purpose:'register',channel:'phone',address:phone,code:$('#phoneCode').value.trim()});verifiedPhone=phone;}
-          r=await api('/register',{name,pass,email,phone});
+          const email=registrationMethod==='email'?$('#authEmail').value.trim().toLowerCase():'',phone=registrationMethod==='phone'?fullPhone('#regDial','#authPhone'):'';
+          if(registrationMethod==='email'&&verifiedEmail!==email){await api('/otp/verify',{purpose:'register',channel:'email',address:email,code:$('#emailCode').value.trim()});verifiedEmail=email;}
+          if(registrationMethod==='phone'&&verifiedPhone!==phone){await api('/otp/verify',{purpose:'register',channel:'phone',address:phone,code:$('#phoneCode').value.trim()});verifiedPhone=phone;}
+          r=await api('/register',{name,pass,email,phone,method:registrationMethod});
         }
-        token = r.token; me = (await api('/me')).me; accountSettings = (await api('/settings')).settings; applyLanguage(accountSettings.language); localStorage.setItem('qb_token', token); localStorage.setItem('qb_last_user', me.name); a.hidden = true; connectStream(); go('home');
+        token = r.token; me = (await api('/me')).me; accountSettings = (await api('/settings')).settings; applyLanguage(accountSettings.language); localStorage.setItem('qb_token', token); localStorage.setItem('qb_last_user', me.name); a.hidden = true; connectStream(); go('home'); handlePendingPrivacyInvite();
       } catch (e) { if(e.status===410){clearLocalAccountData($('#un')?.value.trim() || localStorage.getItem('qb_last_user') || '');localStorage.removeItem('qb_last_user');} status(e.message); }
     };
     $('#go').onclick = submit; if($('#pw')) $('#pw').onkeydown = e => { if (e.key === 'Enter') submit(); };
@@ -753,12 +1066,14 @@ $$('#nav button').forEach(b => b.onclick = () => go(b.dataset.tab));
 (async function init() {
   let sessionExpired = false;
   if (token) { try { me = (await api('/me')).me; accountSettings = (await api('/settings')).settings; if(accountSettings.language) applyLanguage(accountSettings.language); connectStream(); } catch { token = ''; localStorage.removeItem('qb_token'); sessionExpired = true; } }
+  try{const pending=new URLSearchParams(location.search).get('addPrivacy');if(pending){sessionStorage.setItem('privacy_pending_add',pending);const clean=new URL(location.href);clean.searchParams.delete('addPrivacy');history.replaceState({},'',clean.pathname+clean.search+clean.hash);}}catch{}
   document.body.dataset.chatSkin = store.get('chatSkin','paper');
   if(!me) applyLanguage(store.get('settings',{language:'zh-CN'}).language||'zh-CN');
   recordVisit();
   render();
+  if(me)handlePendingPrivacyInvite();
   if (!STANDALONE && sessionExpired) { showAuth('login'); $('#er').textContent = '登录状态失效了，请先登录。'; }
   else if (!STANDALONE && !me) showAuth('login');
-  if (!STANDALONE && 'serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js?v=233', { updateViaCache: 'none' }).then(r => r.update()).catch(() => {});
+  if (!STANDALONE && 'serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js?v=236', { updateViaCache: 'none' }).then(r => r.update()).catch(() => {});
   window.__qbReady = true; window.dispatchEvent(new Event('qb-ready'));
 })();

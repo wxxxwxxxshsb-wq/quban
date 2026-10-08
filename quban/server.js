@@ -75,10 +75,10 @@ function selfCheck() {
 }
 
 // ---------- 简易数据库（JSON 文件）----------
-let db = { users: {}, sessions: {}, messages: [], scores: {}, games: {} };
+let db = { users: {}, sessions: {}, messages: [], scores: {}, games: {}, mediaFiles: {}, scheduledMessages: [] };
 try { db = Object.assign(db, JSON.parse(fs.readFileSync(DB_FILE, 'utf8'))); } catch {}
 db.games = db.games || {};
-db.users = db.users || {}; db.sessions = db.sessions || {}; db.messages = db.messages || []; db.scores = db.scores || {};
+db.users = db.users || {}; db.sessions = db.sessions || {}; db.messages = db.messages || []; db.scores = db.scores || {}; db.mediaFiles = db.mediaFiles || {}; db.scheduledMessages = db.scheduledMessages || [];
 const otpChallenges = new Map(), otpGrants = new Map(), otpRate = new Map();
 let saveTimer = null;
 function flushSave() {
@@ -98,10 +98,19 @@ process.on('SIGINT', shutdown);
 // ---------- 工具函数 ----------
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.json': 'application/json', '.png': 'image/png', '.ico': 'image/x-icon' };
 const send = (res, code, obj) => { if (code >= 400 && res._rid) obj.requestId = res._rid; res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(obj)); };
-const readBody = req => new Promise(r => {
-  let s = '';
-  req.on('data', c => { s += c; if (s.length > 1e6) req.destroy(); });
-  req.on('end', () => { try { r(JSON.parse(s || '{}')); } catch { log('warn', '请求体不是合法 JSON', { id: req._rid, p: req.url }); r({}); } });
+const readBody = (req, maxBytes = 1e6) => new Promise((resolve, reject) => {
+  let s = '', tooLarge = false;
+  req.on('data', c => {
+    if (tooLarge) return;
+    if (Buffer.byteLength(s) + c.length > maxBytes) { tooLarge = true; reject(new Error('请求内容太大')); return; }
+    s += c;
+  });
+  req.on('end', () => {
+    if (tooLarge) return;
+    try { resolve(JSON.parse(s || '{}')); }
+    catch { log('warn', '请求体不是合法 JSON', { id: req._rid, p: req.url }); resolve({}); }
+  });
+  req.on('error', e => { if (!tooLarge) reject(e); });
 });
 const hash = (pw, salt) => crypto.scryptSync(pw, salt, 32).toString('hex');
 const otpKey = (purpose, channel, address) => `${purpose}:${channel}:${String(address).trim().toLowerCase()}`;
@@ -170,6 +179,11 @@ function deleteAccount(name) {
   for (const friendName of user.friends || []) { const friend = db.users[friendName]; if (friend) friend.friends = (friend.friends || []).filter(n => n !== name); }
   for (const [t, n] of Object.entries(db.sessions)) if (n === name) delete db.sessions[t];
   db.messages = db.messages.filter(m => m.from !== name && m.to !== name);
+  db.scheduledMessages = db.scheduledMessages.filter(m => m.from !== name && m.to !== name);
+  for (const [id, media] of Object.entries(db.mediaFiles || {})) if (media.from === name || media.to === name) {
+    try { fs.unlinkSync(path.join(DATA_DIR, 'media', id + media.ext)); } catch {}
+    delete db.mediaFiles[id];
+  }
   for (const scores of Object.values(db.scores)) delete scores[name];
   for (const [id, game] of Object.entries(db.games)) if (game.players && game.players.includes(name)) delete db.games[id];
   delete db.users[name]; save();
@@ -191,6 +205,22 @@ const online = n => streams.has(n) && streams.get(n).size > 0;
 function push(name, event, data) {
   (streams.get(name) || []).forEach(res => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
 }
+function dispatchScheduledMessages() {
+  const now = Date.now(), due = db.scheduledMessages.filter(x => x.at <= now), keep = db.scheduledMessages.filter(x => x.at > now);
+  if (!due.length) return;
+  db.scheduledMessages = keep;
+  for (const job of due) {
+    const sender = db.users[job.from], recipient = db.users[job.to];
+    if (!sender || !recipient || !(sender.friends || []).includes(job.to) || !(recipient.friends || []).includes(job.from)) continue;
+    const message = { from: job.from, to: job.to, text: job.text, media: [], t: now, scheduled: true };
+    db.messages.push(message);
+    push(job.to, 'msg', message);
+    push(job.from, 'scheduled-sent', { id: job.id, message });
+  }
+  if (db.messages.length > 20000) db.messages.splice(0, 5000);
+  save();
+}
+setInterval(dispatchScheduledMessages, 10000).unref?.();
 
 // ---------- AI 助手「小伴」----------
 const SYSTEM = `你是「小伴」，Privacy App 里的 AI 助手。你聪明、靠谱、有点幽默，像一个什么都懂的好朋友。
@@ -331,14 +361,18 @@ async function api(req, res, url) {
   }
 
   if (p === '/api/register' && m === 'POST') {
-    const b=await readBody(req), name=b.name, pass=b.pass, email=String(b.email||'').trim().toLowerCase(), phone=cleanPhone(b.phone);
+    const b=await readBody(req), name=b.name, pass=b.pass, method=['id','email','phone'].includes(b.method)?b.method:'legacy';
+    const email=method==='phone'?'':String(b.email||'').trim().toLowerCase(), phone=method==='email'?'':String(b.phone||'').trim()?cleanPhone(b.phone):'';
     if (typeof name !== 'string' || !/^[\u4e00-\u9fa5\w]{2,12}$/.test(name)) return send(res, 400, { error: '昵称需要 2-12 个字（中文、字母、数字、下划线）' });
     if (typeof pass !== 'string' || pass.length < 8) return send(res, 400, { error: '新密码至少 8 位' });
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !/^\+[1-9]\d{7,14}$/.test(phone)) return send(res,400,{error:'请填写有效邮箱和含国家区号的手机号'});
+    if (method==='email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return send(res,400,{error:'请填写有效邮箱地址'});
+    if (method==='phone' && !/^\+[1-9]\d{7,14}$/.test(phone)) return send(res,400,{error:'请填写含国家区号的有效手机号'});
+    if (method==='legacy' && (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !/^\+[1-9]\d{7,14}$/.test(phone))) return send(res,400,{error:'注册资料不完整，请重新提交'});
     if (db.users[name]) return send(res, 400, { error: '这个昵称已经被用了，换一个吧' });
-    if (Object.values(db.users).some(u => u.email === email || u.phone === phone)) return send(res,400,{error:'邮箱或手机号已绑定其他账号'});
-    if (!hasOtp('register','email',email) || !hasOtp('register','phone',phone)) return send(res,403,{error:'请先完成邮箱和手机验证码验证'});
-    consumeOtp('register','email',email); consumeOtp('register','phone',phone);
+    if (Object.values(db.users).some(u => (email && u.email === email) || (phone && u.phone === phone))) return send(res,400,{error:'邮箱或手机号已绑定其他账号'});
+    const needsEmail=method==='email'||method==='legacy', needsPhone=method==='phone'||method==='legacy';
+    if ((needsEmail && !hasOtp('register','email',email)) || (needsPhone && !hasOtp('register','phone',phone))) return send(res,403,{error:method==='email'?'请先完成邮箱验证码验证':method==='phone'?'请先完成手机验证码验证':'请先完成邮箱和手机验证码验证'});
+    if(needsEmail)consumeOtp('register','email',email); if(needsPhone)consumeOtp('register','phone',phone);
     const salt = crypto.randomBytes(8).toString('hex');
     db.users[name] = { name, email, phone, salt, pw: hash(pass, salt), friends: [], created: Date.now(), settings: defaultSettings() };
     const token = crypto.randomBytes(24).toString('hex');
@@ -535,12 +569,81 @@ async function api(req, res, url) {
     const list = db.messages.filter(x => (x.from === me.name && x.to === w) || (x.from === w && x.to === me.name)).slice(-100);
     return send(res, 200, { messages: list });
   }
+  if (p === '/api/search' && m === 'GET') {
+    const q = String(url.searchParams.get('q') || '').trim().toLowerCase().slice(0, 120);
+    if (!q) return send(res, 200, { results: [] });
+    const results = db.messages.filter(x => (x.from === me.name || x.to === me.name) && ((x.text || '').toLowerCase().includes(q) || (x.media || []).some(f => String(f.name || '').toLowerCase().includes(q)) || String(x.sticker || '').toLowerCase().includes(q)))
+      .slice(-500).reverse().slice(0, 80).map(x => ({ type: 'message', peer: x.from === me.name ? x.to : x.from, from: x.from, text: x.text || (x.media?.length ? '媒体文件' : x.sticker || '贴纸'), t: x.t }));
+    return send(res, 200, { results });
+  }
+  if (p === '/api/messages/scheduled' && m === 'GET') {
+    const rows = db.scheduledMessages.filter(x => x.from === me.name).sort((a,b) => a.at - b.at).map(({id,to,text,at}) => ({id,to,text,at}));
+    return send(res, 200, { scheduled: rows });
+  }
+  if (p === '/api/messages/schedule' && m === 'POST') {
+    const b = await readBody(req), to = String(b.to || ''), text = String(b.text || '').trim().slice(0, 1000), at = Number(b.at);
+    if (!me.friends.includes(to)) return send(res, 400, { error: '只能定时发送给已添加的好友' });
+    if (!text) return send(res, 400, { error: '先写下要发送的消息' });
+    if (!Number.isFinite(at) || at < Date.now() + 60000 || at > Date.now() + 30 * 86400000) return send(res, 400, { error: '发送时间要在 1 分钟到 30 天之间' });
+    if (db.scheduledMessages.filter(x => x.from === me.name).length >= 100) return send(res, 429, { error: '待发送消息已达 100 条，请先取消一条' });
+    const job = { id: crypto.randomBytes(12).toString('hex'), from: me.name, to, text, at, created: Date.now() };
+    db.scheduledMessages.push(job); save();
+    return send(res, 200, { scheduled: { id: job.id, to, text, at } });
+  }
+  const scheduledMatch = p.match(/^\/api\/messages\/scheduled\/([a-f0-9]{24})$/);
+  if (scheduledMatch && m === 'DELETE') {
+    const job = db.scheduledMessages.find(x => x.id === scheduledMatch[1] && x.from === me.name);
+    if (!job) return send(res, 404, { error: '这条待发送消息不存在或已发送' });
+    db.scheduledMessages = db.scheduledMessages.filter(x => x.id !== job.id); save();
+    return send(res, 200, { ok: true });
+  }
+  const mediaMatch = p.match(/^\/api\/media\/([a-f0-9]{24})$/);
+  if (mediaMatch && m === 'GET') {
+    const id = mediaMatch[1], item = db.mediaFiles[id];
+    if (!item || ![item.from, item.to].includes(me.name) || !db.users[item.from]?.friends?.includes(item.to)) return send(res, 404, { error: '找不到这份聊天媒体' });
+    return fs.readFile(path.join(DATA_DIR, 'media', id + item.ext), (err, data) => {
+      if (err) return send(res, 404, { error: '这份媒体暂时无法读取' });
+      res.writeHead(200, { 'Content-Type': item.mime, 'Content-Length': data.length, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Disposition': 'inline; filename="' + encodeURIComponent(item.name) + '"' });
+      res.end(data);
+    });
+  }
+  if (p === '/api/media' && m === 'POST') {
+    const b = await readBody(req, 9 * 1024 * 1024), to = String(b.to || ''), mime = String(b.mime || '').toLowerCase();
+    const types = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif', 'video/mp4': '.mp4', 'video/webm': '.webm', 'video/quicktime': '.mov' };
+    if (!me.friends.includes(to)) return send(res, 400, { error: '只能发送给已添加的好友' });
+    if (!types[mime]) return send(res, 415, { error: '目前支持 JPG、PNG、WebP、GIF、MP4、WebM 和 MOV 格式' });
+    const encoded = String(b.data || '').replace(/^data:[^,]+,/, '');
+    if (!/^[A-Za-z0-9+/]*={0,2}$/.test(encoded) || !encoded || encoded.length > 7 * 1024 * 1024) return send(res, 413, { error: '请选择不超过 5 MB 的有效文件' });
+    const data = Buffer.from(encoded, 'base64');
+    if (!data.length || data.length > 5 * 1024 * 1024) return send(res, 413, { error: '单个文件不能超过 5 MB' });
+    const starts = (...bytes) => bytes.every((v, i) => data[i] === v);
+    const valid = mime === 'image/jpeg' ? starts(0xff,0xd8,0xff)
+      : mime === 'image/png' ? starts(0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a)
+      : mime === 'image/gif' ? ['GIF87a','GIF89a'].includes(data.subarray(0,6).toString())
+      : mime === 'image/webp' ? data.subarray(0,4).toString() === 'RIFF' && data.subarray(8,12).toString() === 'WEBP'
+      : mime === 'video/webm' ? starts(0x1a,0x45,0xdf,0xa3)
+      : (mime === 'video/mp4' || mime === 'video/quicktime') && data.length > 12 && data.subarray(4,8).toString() === 'ftyp';
+    if (!valid) return send(res, 400, { error: '文件内容与格式不匹配，请重新选择' });
+    const id = crypto.randomBytes(12).toString('hex'), ext = types[mime], dir = path.join(DATA_DIR, 'media');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, id + ext), data, { flag: 'wx' });
+    const name = path.basename(String(b.name || 'media' + ext)).replace(/[\r\n"\\/]/g, '_').slice(0, 120) || 'media' + ext;
+    db.mediaFiles[id] = { id, from: me.name, to, mime, ext, name, size: data.length, t: Date.now() };
+    save();
+    return send(res, 200, { media: { id, mime, name, size: data.length } });
+  }
   if (p === '/api/messages' && m === 'POST') {
-    const { to, text } = await readBody(req);
+    const { to, text, media, sticker } = await readBody(req);
     if (!me.friends.includes(to)) return send(res, 400, { error: '你们还不是好友' });
     const t = String(text || '').trim().slice(0, 1000);
-    if (!t) return send(res, 400, { error: '消息为空' });
-    const msg = { from: me.name, to, text: t, t: Date.now() };
+    const files = Array.isArray(media) ? media.slice(0, 6).map(x => {
+      const f = db.mediaFiles[String(x.id || '')];
+      return f && f.from === me.name && f.to === to ? { id: f.id, mime: f.mime, name: f.name, size: f.size } : null;
+    }) : [];
+    if (Array.isArray(media) && (media.length > 6 || files.some(x => !x))) return send(res, 403, { error: '最多发送 6 个文件，请重新选择' });
+    const stickerValue = typeof sticker === 'string' ? sticker.slice(0, 12) : '';
+    if (!t && !files.length && !stickerValue) return send(res, 400, { error: '消息内容为空' });
+    const msg = { from: me.name, to, text: t, media: files, sticker: stickerValue || undefined, t: Date.now() };
     db.messages.push(msg); if (db.messages.length > 20000) db.messages.splice(0, 5000); save();
     push(to, 'msg', msg);
     return send(res, 200, { message: msg });
@@ -585,7 +688,7 @@ const server = http.createServer(async (req, res) => {
     if (isApi) await api(req, res, url); else serveStatic(req, res, url);
   } catch (e) {
     recordError('server', e.message, { id: rid, m: req.method, p: url.pathname, u: req._user, stack: e.stack });
-    if (!res.headersSent) send(res, 500, { error: '服务器出错了' }); else res.end();
+    if (!res.headersSent) send(res, e.message === '请求内容太大' ? 413 : 500, { error: e.message === '请求内容太大' ? '上传内容过大，请选择较小文件' : '服务器出错了' }); else res.end();
   }
 });
 server.on('clientError', (e, sock) => { log('warn', '客户端连接异常', { err: e.message }); if (sock.writable) sock.end('HTTP/1.1 400 Bad Request\r\n\r\n'); });

@@ -1,0 +1,7 @@
+/* Privacy 电脑版样式：只在宽屏且有鼠标时加载。 */
+.pv-tool:hover,.pv-item:hover,.pv-ci:hover,.pv-today-row:hover,.pv-privacy-row:hover{border-color:var(--pv-accent);cursor:pointer}
+.pv-btn:hover{filter:brightness(1.06)}.pv-chip:hover{border-color:var(--pv-accent)}
+.pv-page{max-width:760px}
+.pv-grid{grid-template-columns:repeat(3,1fr)}
+.pv-bar>*{max-width:760px}
+.msgs::-webkit-scrollbar,#main::-webkit-scrollbar{width:10px}.msgs::-webkit-scrollbar-thumb,#main::-webkit-scrollbar-thumb{background:#34352f}

@@ -35,7 +35,7 @@ function reactsHtml(m) {
 messageHtml = function (m, mine) {
   const reply = m.reply ? `<button class="pv-quote" type="button" data-qid="${escapeAttr(m.reply.id)}"><b>${me && m.reply.from === me.name ? '我' : esc(m.reply.from)}</b><span>${esc(m.reply.text)}</span></button>` : '';
   const media = (m.media || []).map(f => f.once ? onceHtml(m, mine, f) : mediaHtml(f)).join('');
-  const content = `${reply}${m.voice ? voiceHtml(m, mine) : ''}${m.sticker ? `<div class="sticker-sent" aria-label="贴纸">${esc(m.sticker)}</div>` : ''}${m.text ? `<div class="message-text">${fmtMsg(m.text)}</div>` : ''}${media}`;
+  const content = `${reply}${m.voice ? voiceHtml(m, mine) : ''}${m.sticker ? (String(m.sticker).startsWith('pv:') ? pvStickerHtml(m.sticker) : `<div class="sticker-sent" aria-label="贴纸">${esc(m.sticker)}</div>`) : ''}${m.text ? `<div class="message-text">${fmtMsg(m.text)}</div>` : ''}${media}`;
   const stamp = new Date(m.t || Date.now()).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
   const searchText = (m.text || '') + ' ' + ((m.voice && m.voice.transcript) || '');
   return `<div class="msg-row ${mine ? 'mine' : ''}" ${m.id ? `data-mid="${escapeAttr(m.id)}"` : ''} ${m.exp ? `data-exp="${m.exp}"` : ''} data-message-text="${escapeAttr(searchText.trim())}"><div class="bub ${mine ? 'me' : ''}">${content}${reactsHtml(m)}<span class="msg-meta">${m.exp ? `<i class="pv-exp" title="阅后即焚">${pvI('timer', 11)}</i>` : ''}${stamp}${mine ? `<i class="pv-sent" aria-label="已送达">${pvPx('lock', 'currentColor', 1.5)}</i>` : ''}</span>${m.id ? `<button class="pv-bub-more" type="button" aria-label="消息选项">${pvI('more', 16)}</button>` : ''}</div></div>`;
@@ -282,15 +282,17 @@ async function pvVoiceSend(peer, blob, dur, wave, transcript) {
 const _viewChat = viewChat;
 viewChat = async function () { await _viewChat(); if (me) pvEnhanceList(); };
 let pvListTimer = null;
-function pvRefreshList() { clearTimeout(pvListTimer); pvListTimer = setTimeout(() => { if (tab === 'chat' && $('.clist') && me) pvEnhanceList(); }, 250); }
+function pvRefreshList() { pvListAt = 0; clearTimeout(pvListTimer); pvListTimer = setTimeout(() => { if (tab === 'chat' && $('.clist') && me) pvEnhanceList(); }, 250); }
+let pvListCache = null, pvListAt = 0;
 async function pvEnhanceList() {
   const aside = $('.clist'); if (!aside) return;
-  let chats = [], reqs = [];
-  try { chats = (await api('/chats')).chats; } catch {}
-  try { reqs = (await api('/friends/requests')).requests; } catch {}
-  if (!aside.isConnected) return;
+  if (pvListCache) pvListRender(aside, pvListCache.chats, pvListCache.reqs);   /* 先用缓存立刻画出来，再在后台刷新 */
+  if (pvListCache && Date.now() - pvListAt < 8000) return;
+  const [cr, rr] = await Promise.all([api('/chats').catch(() => null), api('/friends/requests').catch(() => null)]);
+  if (!cr) return; const chats = cr.chats, reqs = rr ? rr.requests : [];
+  pvListCache = { chats, reqs }; pvListAt = Date.now();
   chats.forEach(c => chat.sum[c.name] = c);
-  pvListRender(aside, chats, reqs);
+  const now = $('.clist'); if (now && now.isConnected) pvListRender(now, chats, reqs);
 }
 function pvAvatar(name, o) {
   o = o || {}; const cols = ['#3b5a4a', '#5a4a6b', '#6b4a3b', '#3b4f6b', '#6b3b4f', '#4f6b3b']; let h = 0; for (const c of name) h = (h * 31 + c.charCodeAt(0)) >>> 0;
@@ -300,7 +302,7 @@ function pvListTime(ms) { const d = new Date(ms), n = new Date(), p = x => Strin
 function pvPreviewHtml(c) {
   const l = c.last; if (!l) return '<span class="pv-pv">还没有消息</span>'; const who = l.from === (me && me.name) ? '我：' : '';
   const ic = { voice: pvPx('mic', 'var(--pv-accent)', 1.5), photo: pvI('image', 14), video: pvI('image', 14), once: pvI('timer', 14), sticker: '' }[l.kind] || '';
-  const t = l.kind === 'voice' ? '语音 ' + pvDur(l.dur || 0) : l.kind === 'photo' ? '照片' : l.kind === 'video' ? '视频' : l.kind === 'once' ? '限时照片' : l.kind === 'sticker' ? '贴纸 ' + esc(l.text) : esc(l.text);
+  const t = l.kind === 'voice' ? '语音 ' + pvDur(l.dur || 0) : l.kind === 'photo' ? '照片' : l.kind === 'video' ? '视频' : l.kind === 'once' ? '限时照片' : l.kind === 'sticker' ? (String(l.text).startsWith('pv:') ? '[小鳄贴纸]' : '贴纸 ' + esc(l.text)) : esc(l.text);
   return `<span class="pv-pv">${who}${ic}${t}</span>`;
 }
 function pvListRender(aside, chats, reqs) {
@@ -334,8 +336,8 @@ function pvListRender(aside, chats, reqs) {
     chat.selectedFiles.forEach(f => URL.revokeObjectURL(f.preview)); chat.selectedFiles = []; chat.tray = ''; chat.replyTo = null;
     chat.peer = b.dataset.p; chat.unread[chat.peer] = 0; chat.open = true; updateDot(); viewChat();
   });
-  $$('[data-rq]', aside).forEach(b => b.onclick = async () => { try { await api('/friends/respond', { name: b.dataset.rq, accept: b.dataset.acc === '1' }); toast(b.dataset.acc === '1' ? '已添加好友 ' + b.dataset.rq : '已忽略'); viewChat(); } catch (e) { toast(e.message); } });
-  $('#addb').onclick = async () => { const n = $('#addf').value.trim(); if (!n) return; try { const fr = await api('/friends/add', { name: n }); toast(fr.pending ? '好友请求已发送，等对方确认' : '已添加好友 ' + n); viewChat(); } catch (e) { toast(e.message); } };
+  $$('[data-rq]', aside).forEach(b => b.onclick = async () => { try { await api('/friends/respond', { name: b.dataset.rq, accept: b.dataset.acc === '1' }); toast(b.dataset.acc === '1' ? '已添加好友 ' + b.dataset.rq : '已忽略'); pvListAt = 0; viewChat(); } catch (e) { toast(e.message); } });
+  $('#addb').onclick = async () => { const n = $('#addf').value.trim(); if (!n) return; try { const fr = await api('/friends/add', { name: n }); toast(fr.pending ? '好友请求已发送，等对方确认' : '已添加好友 ' + n); pvListAt = 0; viewChat(); } catch (e) { toast(e.message); } };
   $('#addf').onkeydown = e => { if (e.key === 'Enter' && !e.isComposing) $('#addb').click(); };
 }
 
@@ -365,6 +367,7 @@ connectStream = (function (orig) {
     const gone = e => { const d = JSON.parse(e.data); pvDrop(d.id); pvRefreshList(); }; es.addEventListener('msg-delete', gone); es.addEventListener('msg-expire', gone);
     es.addEventListener('chat-prefs', e => { const d = JSON.parse(e.data); chat.sum[d.with] = Object.assign(chat.sum[d.with] || { name: d.with }, { disappear: d.disappear }); toast(d.disappear ? `${d.with} 开启了阅后即焚：${PV_DIS[d.disappear]}` : `${d.with} 关闭了阅后即焚`); if (tab === 'chat' && chat.peer === d.with) renderPane(); });
     es.addEventListener('once-viewed', e => { const d = JSON.parse(e.data), s = pvJ('pv_once', []); s.push(d.id); store.set('pv_once', s.slice(-300)); const el = $(`.pv-once[data-once="${CSS.escape(d.id)}"] small`); if (el) el.textContent = '对方已查看'; });
+    es.addEventListener('friend', () => pvRefreshList());
     es.addEventListener('friend-request', e => { toast(JSON.parse(e.data).name + ' 请求添加你为好友'); pvRefreshList(); });
     es.addEventListener('msg', e => { const m = JSON.parse(e.data); if (tab === 'chat' && chat.peer === m.from) pvLastRead(m.from); pvRefreshList(); });
   };
@@ -383,3 +386,58 @@ send = (function (orig) {
     } catch (e) { inp.value = text; pvToggleSendMic(); toast(e.message); }
   };
 })(send);
+
+/* ---------- 原创像素小鳄表情包 ---------- */
+const PV_CROC = [['g01', '开心'], ['g02', '大笑'], ['g03', '爱心'], ['g04', '哭哭'], ['g05', '生气'], ['g06', '睡觉'], ['g07', '惊讶'], ['g08', '酷'], ['g09', '害羞'], ['g10', '点赞'], ['g11', '疑惑'], ['g12', '谢谢']];
+const _crocMemo = {};
+function pvCrocSvg(id) {
+  if (_crocMemo[id]) return _crocMemo[id];
+  const W = 30, H = 22, g = Array.from({ length: H }, () => Array(W).fill(null)), R = (x, y, w, h, c) => { for (let j = y; j < y + h; j++) for (let i = x; i < x + w; i++) if (g[j] && i >= 0 && i < W) g[j][i] = c; };
+  const O = '#19170d', G = '#7fcf6e', D = '#4f9f4a', L = '#d6f2a8', Wt = '#ffffff', P = '#f08a79', B = '#6ec3f5', Y = '#f4c91c', Rd = '#e5564a';
+  const bmp = (rows, x, y, c) => rows.forEach((r, j) => [...r].forEach((ch, i) => { if (ch === '#') R(x + i, y + j, 1, 1, c); }));
+  R(3, 8, 20, 12, O); R(4, 9, 18, 10, G); R(5, 16, 16, 3, L); R(4, 4, 7, 6, O); R(5, 5, 5, 5, G); R(15, 4, 7, 6, O); R(16, 5, 5, 5, G); R(6, 6, 3, 3, Wt); R(17, 6, 3, 3, Wt); R(10, 11, 1, 1, D); R(15, 11, 1, 1, D); R(7, 9, 1, 1, D); R(18, 9, 1, 1, D); R(11, 7, 4, 1, O); R(12, 6, 2, 1, O); R(11, 8, 4, 1, D); R(22, 15, 4, 3, O); R(23, 16, 3, 2, G); R(26, 17, 2, 2, O);
+  const pupil = () => { R(7, 7, 2, 2, O); R(18, 7, 2, 2, O); };
+  const happy = () => { R(6, 6, 3, 3, G); R(17, 6, 3, 3, G); bmp(['.#.', '#.#'], 6, 7, O); bmp(['.#.', '#.#'], 17, 7, O); };
+  const closed = () => { R(6, 6, 3, 3, G); R(17, 6, 3, 3, G); R(6, 8, 3, 1, O); R(17, 8, 3, 1, O); };
+  const teeth = () => [9, 11, 13, 15].forEach(x => R(x, 15, 1, 1, Wt));
+  const smile = () => { R(9, 14, 8, 1, O); R(8, 13, 1, 1, O); R(17, 13, 1, 1, O); teeth(); };
+  const flat = () => { R(9, 14, 8, 1, O); teeth(); };
+  const frown = () => { R(9, 14, 8, 1, O); R(8, 15, 1, 1, O); R(17, 15, 1, 1, O); };
+  const open = () => { R(8, 13, 10, 5, O); R(10, 16, 6, 2, P); R(9, 13, 1, 1, Wt); R(16, 13, 1, 1, Wt); };
+  const oh = () => { R(11, 13, 4, 5, O); };
+  const blush = () => { R(5, 12, 3, 2, P); R(19, 12, 3, 2, P); };
+  const heartB = ['.#.#.', '#####', '#####', '.###.', '..#..'];
+  const zzz = () => { bmp(['###', '..#', '.#.', '#..', '###'], 24, 1, Y); bmp(['##', '.#', '#.', '##'], 27, 0, Y); };
+  ({
+    g01: () => { happy(); smile(); blush(); }, g02: () => { happy(); open(); },
+    g03: () => { R(6, 6, 3, 3, G); R(17, 6, 3, 3, G); bmp(heartB, 5, 5, Rd); bmp(heartB, 16, 5, Rd); smile(); },
+    g04: () => { pupil(); frown(); R(7, 9, 1, 6, B); R(18, 9, 1, 6, B); R(6, 12, 1, 2, B); R(19, 12, 1, 2, B); },
+    g05: () => { pupil(); flat(); R(5, 5, 4, 1, Rd); R(17, 5, 4, 1, Rd); R(8, 6, 1, 1, Rd); R(17, 6, 1, 1, Rd); R(3, 9, 1, 1, Rd); },
+    g06: () => { closed(); flat(); zzz(); }, g07: () => { R(6, 6, 3, 3, Wt); R(17, 6, 3, 3, Wt); R(7, 7, 1, 1, O); R(18, 7, 1, 1, O); oh(); R(2, 3, 1, 3, Y); R(27, 8, 1, 3, Y); },
+    g08: () => { R(5, 6, 5, 3, O); R(16, 6, 5, 3, O); R(10, 7, 6, 1, O); R(6, 7, 1, 1, Wt); R(17, 7, 1, 1, Wt); smile(); },
+    g09: () => { pupil(); R(9, 14, 3, 1, O); R(12, 15, 2, 1, O); blush(); R(5, 11, 3, 1, P); R(19, 11, 3, 1, P); },
+    g10: () => { happy(); smile(); bmp(['..#..', '.##..', '####.', '####.', '####.', '###..'], 24, 11, Y); R(24, 17, 5, 3, O); R(25, 17, 3, 2, Y); },
+    g11: () => { pupil(); flat(); bmp(['.###.', '#...#', '...#.', '..#..', '.....', '..#..'], 24, 1, Y); },
+    g12: () => { happy(); smile(); bmp(heartB, 24, 4, Rd); }
+  }[id] || (() => { pupil(); smile(); }))();
+  let svg = `<svg viewBox="0 0 ${W} ${H}" shape-rendering="crispEdges" aria-hidden="true">`;
+  for (let y = 0; y < H; y++) { let x = 0; while (x < W) { const c = g[y][x]; if (!c) { x++; continue; } let e = x; while (e < W && g[y][e] === c) e++; svg += `<rect x="${x}" y="${y}" width="${e - x}" height="1" fill="${c}"/>`; x = e; } }
+  return _crocMemo[id] = svg + '</svg>';
+}
+function pvStickerHtml(code) { const id = String(code).slice(3), nm = (PV_CROC.find(x => x[0] === id) || [0, '贴纸'])[1]; return `<span class="pv-stk" role="img" aria-label="小鳄 ${nm}">${pvCrocSvg(id)}</span>`; }
+const _renderTray = renderTray;
+renderTray = function () {
+  if (chat.tray !== 'stickers' || chat.peer === 'ai') return _renderTray();
+  if (!chat.stickerPack) chat.stickerPack = '小鳄';
+  const tray = $('#chatTray'); if (!tray) return;
+  if (chat.stickerPack !== '小鳄') {
+    _renderTray(); const bar = $('.sticker-packs', tray);
+    if (bar) { bar.insertAdjacentHTML('afterbegin', '<button class="sticker-pack" data-pack="小鳄">小鳄</button>'); $('[data-pack="小鳄"]', bar).onclick = () => { chat.stickerPack = '小鳄'; renderTray(); }; }
+    return;
+  }
+  tray.hidden = false;
+  tray.innerHTML = `<div class="tray-head"><div><b>贴纸</b><small>Privacy 小鳄 · 原创像素贴纸</small></div><button class="chat-icon-btn" id="closeTray" aria-label="关闭">${chatIcon('close')}</button></div><div class="sticker-packs">${['小鳄', '鳄鱼', '猫咪', '熊猫'].map(n => `<button class="sticker-pack ${n === '小鳄' ? 'active' : ''}" data-pack="${n}">${n}</button>`).join('')}</div><div class="sticker-grid pv-croc-grid">${PV_CROC.map(([id, nm]) => `<button class="sticker-choice" data-pv="pv:${id}" aria-label="发送小鳄贴纸：${nm}">${pvStickerHtml('pv:' + id)}<small>${nm}</small></button>`).join('')}</div>`;
+  $('#closeTray').onclick = () => { chat.tray = ''; renderTray(); };
+  $$('[data-pack]', tray).forEach(b => b.onclick = () => { chat.stickerPack = b.dataset.pack; renderTray(); });
+  $$('[data-pv]', tray).forEach(b => b.onclick = () => sendSticker(b.dataset.pv));
+};

@@ -1,6 +1,6 @@
 {
   "name": "privacy",
-  "version": "2.4.0",
+  "version": "2.4.1",
   "description": "Privacy — 隐私至上的聊天、AI 助手、小游戏、日常工具",
   "main": "server.js",
   "scripts": {

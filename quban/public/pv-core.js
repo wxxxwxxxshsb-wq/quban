@@ -28,7 +28,12 @@ const PVX = {
   lock: ['..##..', '.#..#.', '.#..#.', '######', '##..##', '##..##', '######'], play: ['##....', '####..', '######', '######', '####..', '##....'], pause: ['###..###', '###..###', '###..###', '###..###', '###..###', '###..###'],
   mic: ['..##..', '.####.', '.####.', '.####.', '#.##.#', '#....#', '.#..#.', '..##..', '..##..', '.####.'], spark: ['...#...', '..###..', '.#####.', '#######', '.#####.', '..###..', '...#...']
 };
+const _pxMemo = new Map();
 function pvPx(n, col, s) {
+  const key = n + '|' + col + '|' + s; if (_pxMemo.has(key)) return _pxMemo.get(key);
+  const out = pvPxBuild(n, col, s); _pxMemo.set(key, out); return out;
+}
+function pvPxBuild(n, col, s) {
   const rows = PVX[n] || [], w = Math.max(...rows.map(r => r.length));
   return `<svg class="pv-px" viewBox="0 0 ${w} ${rows.length}" style="width:${w * (s || 2)}px;height:${rows.length * (s || 2)}px;fill:${col || 'currentColor'}" aria-hidden="true">${rows.map((r, y) => [...r].map((c, x) => c === '#' ? `<rect x="${x}" y="${y}" width="1" height="1"/>` : '').join('')).join('')}</svg>`;
 }
@@ -206,7 +211,7 @@ function pvPad(o) {
     if ($('.pv-lock-x', el)) $('.pv-lock-x', el).onclick = () => done(null);
     if ($('.pv-lock-forgot', el)) $('.pv-lock-forgot', el).onclick = () => {
       if (!confirm('忘记 PIN 需要重新登录，并清除这台设备上的应用锁设置。继续吗？')) return;
-      store.set('pv_lock', { on: false }); localStorage.removeItem('qb_token'); token = ''; me = null; if (es) es.close(); done(null); go('home'); showAuth();
+      store.set('pv_lock', { on: false }); localStorage.removeItem('qb_token'); localStorage.removeItem('pv_boot'); token = ''; me = null; if (es) es.close(); done(null); go('home'); showAuth();
     };
   });
 }

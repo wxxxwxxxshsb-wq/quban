@@ -1,0 +1,23 @@
+/* Privacy 手机版样式：只在手机宽度或触屏设备加载。目标：像 iPhone 一样跟手、不卡。 */
+html{-webkit-tap-highlight-color:transparent;-webkit-text-size-adjust:100%}
+html,body{overscroll-behavior-y:none}
+body{-webkit-touch-callout:none}
+button,a,[role=button],.pv-tool,.pv-item,.ci,.tile,.pv-chip{touch-action:manipulation;-webkit-user-select:none;user-select:none}
+.bub,.message-text,.pv-pre,textarea,input{-webkit-user-select:text;user-select:text}
+#main,.msgs,.clist .items,.pv-sheet-box{-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+/* 手机上不画背景点阵、不做悬停动画：少画一层，滑动更稳 */
+#main,body[data-active-tab="chat"] .msgs{background-image:none!important}
+.tile:hover,.pv-tool:hover,#nav button:hover{transform:none;background:inherit}
+/* iOS 会在输入框字号小于 16px 时自动放大页面，所以统一 16px */
+input:not([type=checkbox]):not([type=range]):not([type=file]),textarea,select{font-size:16px!important}
+/* 页面进入：只用 transform + opacity（GPU 直接合成，不触发重排） */
+.pv-page{animation:pvin .2s cubic-bezier(.22,.8,.24,1)}
+@keyframes pvin{from{opacity:0;transform:translate3d(16px,0,0)}}
+.pv-sheet-box{animation:pvsheet .22s cubic-bezier(.22,.8,.24,1)}
+@keyframes pvsheet{from{transform:translate3d(0,100%,0)}}
+/* 按下反馈要立刻出现 */
+.pv-btn:active,.pv-tool:active,.pv-item:active,.pv-chip:active,.ci:active{transition:none}
+/* 底部导航与输入栏贴合安全区（刘海 / Home 条） */
+#nav{padding-bottom:max(env(safe-area-inset-bottom),6px)}
+.compose-wrap{padding-bottom:max(env(safe-area-inset-bottom),0px)}
+.pv-page{padding-left:max(env(safe-area-inset-left),0px);padding-right:max(env(safe-area-inset-right),0px)}

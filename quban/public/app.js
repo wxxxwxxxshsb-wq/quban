@@ -1,4 +1,4 @@
-/* Privacy 2.4.0 前端 */
+/* Privacy 2.4.1 前端 */
 'use strict';
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -9,7 +9,7 @@ const yesterday = () => fmt(new Date(Date.now() - 864e5));
 const pick = a => a[Math.random() * a.length | 0];
 
 const STANDALONE = location.protocol === 'file:';
-const APP_VERSION = '2.4.0';
+const APP_VERSION = '2.4.1';
 /* ---------- 错误上报：页面里的任何报错都会自动发回服务器，和后端日志用同一个错误码关联 ---------- */
 let lastRid = '', reportCount = 0;
 const reported = new Set();
@@ -938,10 +938,10 @@ function viewMe() {
       <div class="task"><span class="sp">安装到桌面 / 手机主屏幕</span><span class="sub">浏览器菜单 → 安装「Privacy」</span></div>
       <div class="task"><span class="sp">清除聊天记录（小伴）</span><button class="btn sm ghost" id="clr">清除</button></div>
       <div class="task"><span class="sp">${me ? '退出登录' : '登录 / 注册，解锁好友聊天和排行榜'}</span><button class="btn sm" id="lo">${me ? '退出' : '登录'}</button></div></div>
-    <p class="sub" style="margin-top:20px">Privacy v2.4.0 · 注重隐私的聊天空间</p></div>`;
+    <p class="sub" style="margin-top:20px">Privacy v2.4.1 · 注重隐私的聊天空间</p></div>`;
   $('#clr').onclick = () => { store.set('aihist', [AI_HELLO]); toast('已清除'); };
   $('#openSettings').onclick = viewSettings;
-  $('#lo').onclick = () => { if (me) { localStorage.removeItem('qb_token'); token = ''; me = null; if (es) es.close(); go('home'); showAuth(); } else showAuth(); };
+  $('#lo').onclick = () => { if (me) { localStorage.removeItem('qb_token'); localStorage.removeItem('pv_boot'); token = ''; me = null; if (es) es.close(); go('home'); showAuth(); } else showAuth(); };
 }
 function clearLocalAccountData(name) { const prefix='qb_'+name+'_'; for(let i=localStorage.length-1;i>=0;i--){const k=localStorage.key(i);if(k&&k.startsWith(prefix))localStorage.removeItem(k);} }
 
@@ -1097,7 +1097,12 @@ function showAuth() {
 $$('#nav button').forEach(b => b.onclick = () => go(b.dataset.tab));
 (async function init() {
   let sessionExpired = false;
-  if (token) { try { me = (await api('/me')).me; accountSettings = (await api('/settings')).settings; if(accountSettings.language) applyLanguage(accountSettings.language); connectStream(); } catch { token = ''; localStorage.removeItem('qb_token'); sessionExpired = true; } }
+  let pvRevalidate = false;
+  if (token) {
+    let cached = null; try { cached = JSON.parse(localStorage.getItem('pv_boot') || 'null'); } catch {}
+    if (cached && cached.me && cached.k === token.slice(0, 10)) { me = cached.me; accountSettings = cached.settings || {}; if (accountSettings.language) applyLanguage(accountSettings.language); pvRevalidate = true; }
+    else { try { const [m, s] = await Promise.all([api('/me'), api('/settings')]); me = m.me; accountSettings = s.settings; localStorage.setItem('pv_boot', JSON.stringify({ k: token.slice(0, 10), me, settings: accountSettings })); if (accountSettings.language) applyLanguage(accountSettings.language); connectStream(); } catch { token = ''; localStorage.removeItem('qb_token'); sessionExpired = true; } }
+  }
   try{const pending=new URLSearchParams(location.search).get('addPrivacy');if(pending){sessionStorage.setItem('privacy_pending_add',pending);const clean=new URL(location.href);clean.searchParams.delete('addPrivacy');history.replaceState({},'',clean.pathname+clean.search+clean.hash);}}catch{}
   document.body.dataset.chatSkin = store.get('chatSkin','paper');
   if(!me) applyLanguage(store.get('settings',{language:'zh-CN'}).language||'zh-CN');
@@ -1106,6 +1111,8 @@ $$('#nav button').forEach(b => b.onclick = () => go(b.dataset.tab));
   if(me)handlePendingPrivacyInvite();
   if (!STANDALONE && sessionExpired) { showAuth('login'); $('#er').textContent = '登录状态失效了，请先登录。'; }
   else if (!STANDALONE && !me) showAuth('login');
-  if (!STANDALONE && 'serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js?v=240', { updateViaCache: 'none' }).then(r => r.update()).catch(() => {});
+  if (!STANDALONE && 'serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js?v=241', { updateViaCache: 'none' }).then(r => r.update()).catch(() => {});
   window.__qbReady = true; window.dispatchEvent(new Event('qb-ready'));
+  if (pvRevalidate) Promise.all([api('/me'), api('/settings')]).then(([m, s]) => { me = m.me; accountSettings = s.settings; localStorage.setItem('pv_boot', JSON.stringify({ k: token.slice(0, 10), me, settings: accountSettings })); connectStream(); })
+    .catch(e => { if (/登录|过期|失效|未授权/.test(String(e && e.message))) { token = ''; localStorage.removeItem('qb_token'); localStorage.removeItem('pv_boot'); me = null; if (es) es.close(); go('home'); showAuth('login'); $('#er') && ($('#er').textContent = '登录状态失效了，请重新登录。'); } else connectStream(); });
 })();

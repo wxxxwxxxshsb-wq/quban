@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Privacy</title>
-<meta name="theme-color" content="#FFD21F">
+<meta name="theme-color" content="#191a18">
 <meta name="apple-mobile-web-app-title" content="Privacy">
 <link rel="icon" href="/logo.svg">
 <link rel="apple-touch-icon" href="/icon-512.png">
@@ -20,31 +20,35 @@
 @keyframes word-in{to{opacity:1}}
 @media(prefers-reduced-motion:reduce){#sl .shackle,.brand-word{animation:none;transform:none;opacity:1}#splash{transition:none}}
 </style>
-<link rel="stylesheet" href="/style.css?v=238">
+<link rel="stylesheet" href="/style.css?v=240">
+<link rel="stylesheet" href="/features.css?v=240">
 </head>
 <body>
 <div id="splash" aria-hidden="true"><div class="splash-brand"><svg id="sl" viewBox="0 0 64 96"><g class="shackle" fill="#171717"><path d="M24 6h16v6H24zM18 12h6v18h-6zM40 12h6v18h-6z"/></g><path fill="#171717" d="M10 30h44v34H10z"/><path fill="#FFD21F" d="M17 36h30v22H17z"/><path fill="#171717" d="M23 40h16v4H23zM23 40h4v18h-4zM35 40h4v9h-4zM23 47h16v4H23z"/></svg><span class="brand-word">PRIVACY</span></div></div>
 <div id="app">
   <nav id="nav">
     <div class="brand"><img src="/logo.svg" alt="Privacy"><span>Privacy</span></div>
-    <button data-tab="home"><i>🏠</i><span>今天</span></button>
-    <button data-tab="chat"><i>💬</i><span>聊天</span><em id="dot" hidden></em></button>
-    <button data-tab="more"><i>✳</i><span>更多</span></button>
-    <button data-tab="me"><i>🙂</i><span>我的</span></button>
-    <button data-tab="search"><i>⌕</i><span>搜索</span></button>
+    <button data-tab="chat"><i><svg viewBox="0 0 24 24"><path d="M5 5h14v10H10l-4 4v-4H5z"/></svg></i><span>聊天</span><em id="dot" hidden></em></button>
+    <button data-tab="more"><i><svg viewBox="0 0 24 24"><rect x="5" y="5" width="5" height="5"/><rect x="14" y="5" width="5" height="5"/><rect x="5" y="14" width="5" height="5"/><rect x="14" y="14" width="5" height="5"/></svg></i><span>更多</span></button>
+    <button data-tab="me"><i><svg viewBox="0 0 24 24"><circle cx="12" cy="9" r="3.5"/><path d="M5 20c1-4 4-5 7-5s6 1 7 5"/></svg></i><span>我的</span></button>
+    <button data-tab="search"><i><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M16 16l4 4"/></svg></i><span>搜索</span></button>
   </nav>
   <main id="main"></main>
 </div>
 <div id="auth" hidden></div>
 <div id="toast"></div>
 <script>(()=>{const s=document.getElementById('splash');if(!s)return;
-try{if(!/[?&]splash/.test(location.search)&&sessionStorage.getItem('prv_s_v237')){s.remove();return}sessionStorage.setItem('prv_s_v237','1')}catch(e){}
+try{if(!/[?&]splash/.test(location.search)&&(localStorage.getItem('pv_splash_off')==='1'||sessionStorage.getItem('prv_s_v237'))){s.remove();return}sessionStorage.setItem('prv_s_v237','1')}catch(e){}
 let min=false,done=false;
 const go=()=>{if(done||!min||!window.__qbReady)return;done=true;s.classList.add('go');setTimeout(()=>s.remove(),260)};
 setTimeout(()=>{min=true;go()},1300);
 addEventListener('qb-ready',go,{once:true});
 setTimeout(()=>{window.__qbReady=true;min=true;go()},4500)})()</script>
 <script src="/vendor/qrcode.js"></script>
-<script src="/app.js?v=238"></script>
+<script src="/app.js?v=240"></script>
+<script src="/pv-core.js?v=240"></script>
+<script src="/pv-chat.js?v=240"></script>
+<script src="/pv-more.js?v=240"></script>
+<script src="/pv-settings.js?v=240"></script>
 </body>
 </html>

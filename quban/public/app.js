@@ -1,4 +1,4 @@
-/* Privacy 2.3.8 前端 */
+/* Privacy 2.4.0 前端 */
 'use strict';
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -9,7 +9,7 @@ const yesterday = () => fmt(new Date(Date.now() - 864e5));
 const pick = a => a[Math.random() * a.length | 0];
 
 const STANDALONE = location.protocol === 'file:';
-const APP_VERSION = '2.3.8';
+const APP_VERSION = '2.4.0';
 /* ---------- 错误上报：页面里的任何报错都会自动发回服务器，和后端日志用同一个错误码关联 ---------- */
 let lastRid = '', reportCount = 0;
 const reported = new Set();
@@ -24,7 +24,7 @@ addEventListener('unhandledrejection', e => { const r = e.reason; reportError('p
 let token = localStorage.getItem('qb_token') || '';
 let me = null;           // { name } 或 null（游客）
 let accountSettings = null;
-let tab = 'home';
+let tab = 'more';
 let stopGame = null;     // 当前游戏的清理函数
 let es = null;           // SSE
 let activeOnlineGame = null;
@@ -131,6 +131,7 @@ function achievements() {
 
 /* ---------- 路由 / 渲染 ---------- */
 function go(t) {
+  if (t === 'home') t = 'more';
   if (!me && !['home','games','more'].includes(t)) { showAuth('login'); toast('游客模式仅开放首页和精选离线小游戏'); return; }
   if (stopGame) { stopGame(); stopGame = null; }
   if (t !== 'games') activeOnlineGame = null;
@@ -217,7 +218,7 @@ async function viewChat() {
   });
   if ($('#addb')) $('#addb').onclick = async () => {
     const n = $('#addf').value.trim(); if (!n) return;
-    try { await api('/friends/add', { name: n }); toast('已添加好友 ' + n); viewChat(); } catch (e) { toast(e.message); }
+    try { const fr = await api('/friends/add', { name: n }); toast(fr.pending ? '好友请求已发送，等对方确认' : '已添加好友 ' + n); viewChat(); } catch (e) { toast(e.message); }
   };
   if ($('#lg')) $('#lg').onclick = showAuth;
   renderPane();
@@ -515,7 +516,7 @@ function connectStream() {
     const m = JSON.parse(e.data);
     (chat.msgs[m.from] = chat.msgs[m.from] || []).push(m);
     if (tab === 'chat' && chat.peer === m.from) appendMessage(m, false);
-    else { chat.unread[m.from] = (chat.unread[m.from] || 0) + 1; updateDot(); const n = accountSettings?.notifications; if (n?.enabled !== false && n?.messages !== false) { toast(n?.preview === 'none' ? '收到一条新消息' : n?.preview === 'all' ? `${m.from}：${m.text.slice(0, 20)}` : `${m.from} 发来新消息`); if (document.hidden && 'Notification' in window && Notification.permission === 'granted') new Notification('Privacy', { body: n?.preview === 'none' ? '收到一条新消息' : n?.preview === 'all' ? `${m.from}：${m.text.slice(0, 80)}` : `${m.from} 发来新消息`, silent: n?.sound === false }); } if (tab === 'chat') viewChat(); }
+    else { chat.unread[m.from] = (chat.unread[m.from] || 0) + 1; updateDot(); const n = accountSettings?.notifications; if (n?.enabled !== false && n?.messages !== false && !pvQuiet()) { toast(pvPreview(n) === 'none' ? '收到一条新消息' : pvPreview(n) === 'all' ? `${m.from}：${m.text.slice(0, 20)}` : `${m.from} 发来新消息`); if (document.hidden && 'Notification' in window && Notification.permission === 'granted') new Notification('Privacy', { body: pvPreview(n) === 'none' ? '收到一条新消息' : pvPreview(n) === 'all' ? `${m.from}：${m.text.slice(0, 80)}` : `${m.from} 发来新消息`, silent: n?.sound === false }); } if (tab === 'chat') viewChat(); }
   });
   es.addEventListener('friend', e => { const who = JSON.parse(e.data).name; if (accountSettings?.notifications?.enabled !== false && accountSettings?.notifications?.security !== false) toast(who + ' 加你为好友了'); if (tab === 'chat') viewChat(); });
   api('/games/invites').then(({ invites }) => invites.forEach(showGameInvite)).catch(() => {});
@@ -839,7 +840,7 @@ async function handlePendingPrivacyInvite() {
   sessionStorage.removeItem('privacy_pending_add');
   if(name===me.name)return toast('这是你自己的 Privacy ID');
   if(!confirm(`通过 Privacy ID「${name}」添加这位用户为好友？`))return;
-  try{await api('/friends/add',{name});toast('已添加好友：'+name);}catch(e){toast(e.message);}
+  try{const fr=await api('/friends/add',{name});toast(fr.pending?'好友请求已发送，等对方确认':'已添加好友：'+name);}catch(e){toast(e.message);}
 }
 /* ===== 日常工具 ===== */
 let tool = 'todo';
@@ -937,7 +938,7 @@ function viewMe() {
       <div class="task"><span class="sp">安装到桌面 / 手机主屏幕</span><span class="sub">浏览器菜单 → 安装「Privacy」</span></div>
       <div class="task"><span class="sp">清除聊天记录（小伴）</span><button class="btn sm ghost" id="clr">清除</button></div>
       <div class="task"><span class="sp">${me ? '退出登录' : '登录 / 注册，解锁好友聊天和排行榜'}</span><button class="btn sm" id="lo">${me ? '退出' : '登录'}</button></div></div>
-    <p class="sub" style="margin-top:20px">Privacy v2.3.6 · 注重隐私的聊天空间</p></div>`;
+    <p class="sub" style="margin-top:20px">Privacy v2.4.0 · 注重隐私的聊天空间</p></div>`;
   $('#clr').onclick = () => { store.set('aihist', [AI_HELLO]); toast('已清除'); };
   $('#openSettings').onclick = viewSettings;
   $('#lo').onclick = () => { if (me) { localStorage.removeItem('qb_token'); token = ''; me = null; if (es) es.close(); go('home'); showAuth(); } else showAuth(); };
@@ -945,7 +946,7 @@ function viewMe() {
 function clearLocalAccountData(name) { const prefix='qb_'+name+'_'; for(let i=localStorage.length-1;i>=0;i--){const k=localStorage.key(i);if(k&&k.startsWith(prefix))localStorage.removeItem(k);} }
 
 const LANGS = [['zh-CN','简体中文'],['en','English'],['ja','日本語'],['de','Deutsch'],['fr','Français'],['es','Español'],['ko','한국어']];
-const NAV_I18N = { 'zh-CN':['今天','聊天','更多','我的','搜索'],en:['Today','Chat','More','Profile','Search'],ja:['今日','チャット','その他','マイページ','検索'],de:['Heute','Chat','Mehr','Profil','Suche'],fr:["Aujourd’hui",'Chat','Plus','Profil','Recherche'],es:['Hoy','Chat','Más','Perfil','Buscar'],ko:['오늘','채팅','더보기','내 정보','검색'] };
+const NAV_I18N = { 'zh-CN':['聊天','更多','我的','搜索'],en:['Chat','More','Profile','Search'],ja:['チャット','その他','マイページ','検索'],de:['Chat','Mehr','Profil','Suche'],fr:['Chat','Plus','Profil','Recherche'],es:['Chat','Más','Perfil','Buscar'],ko:['채팅','더보기','내 정보','검색'] };
 function applyLanguage(lang) { const labels=NAV_I18N[lang]||NAV_I18N['zh-CN']; $$('#nav button').forEach((b,i)=>{const s=$('span',b);if(s)s.textContent=labels[i]}); document.documentElement.lang=lang||'zh-CN'; }
 async function viewSettings() {
   const main = $('#main');
@@ -1105,6 +1106,6 @@ $$('#nav button').forEach(b => b.onclick = () => go(b.dataset.tab));
   if(me)handlePendingPrivacyInvite();
   if (!STANDALONE && sessionExpired) { showAuth('login'); $('#er').textContent = '登录状态失效了，请先登录。'; }
   else if (!STANDALONE && !me) showAuth('login');
-  if (!STANDALONE && 'serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js?v=238', { updateViaCache: 'none' }).then(r => r.update()).catch(() => {});
+  if (!STANDALONE && 'serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js?v=240', { updateViaCache: 'none' }).then(r => r.update()).catch(() => {});
   window.__qbReady = true; window.dispatchEvent(new Event('qb-ready'));
 })();

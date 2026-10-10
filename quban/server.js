@@ -79,6 +79,9 @@ let db = { users: {}, sessions: {}, messages: [], scores: {}, games: {}, mediaFi
 try { db = Object.assign(db, JSON.parse(fs.readFileSync(DB_FILE, 'utf8'))); } catch {}
 db.games = db.games || {};
 db.users = db.users || {}; db.sessions = db.sessions || {}; db.messages = db.messages || []; db.scores = db.scores || {}; db.mediaFiles = db.mediaFiles || {}; db.scheduledMessages = db.scheduledMessages || [];
+db.chatPrefs = db.chatPrefs || {};
+const mid = () => crypto.randomBytes(8).toString('hex');
+db.messages.forEach(m => { if (!m.id) m.id = mid(); });
 const otpChallenges = new Map(), otpGrants = new Map(), otpRate = new Map();
 let saveTimer = null;
 function flushSave() {
@@ -200,7 +203,8 @@ const authUser = (req, url) => {
   if (name && db.users[name]) { req._user = name; return db.users[name]; }
   return null;
 };
-const defaultSettings = () => ({ language: 'zh-CN', notifications: { enabled: true, messages: true, security: true, preview: 'name', sound: true }, security: { autoDeleteOnFailedLogin: false, failedLoginLimit: 6 } });
+const defaultSettings = () => ({ language: 'zh-CN', notifications: { enabled: true, messages: true, security: true, preview: 'name', sound: true }, security: { autoDeleteOnFailedLogin: false, failedLoginLimit: 6 }, privacy: { addMode: 'open', defaultDisappear: 0 } });
+function normSettings(u) { const d = defaultSettings(); u.settings = Object.assign(d, u.settings || {}); u.settings.notifications = Object.assign(d.notifications, u.settings.notifications || {}); u.settings.security = Object.assign(d.security, u.settings.security || {}); u.settings.privacy = Object.assign(d.privacy, u.settings.privacy || {}); return u.settings; }
 function deleteAccount(name) {
   const user = db.users[name]; if (!user) return;
   const live=streams.get(name); if(live){for(const res of live){try{res.write('event: account-deleted\ndata: {}\n\n');res.end();}catch{}}streams.delete(name);}
@@ -214,6 +218,8 @@ function deleteAccount(name) {
   }
   for (const scores of Object.values(db.scores)) delete scores[name];
   for (const [id, game] of Object.entries(db.games)) if (game.players && game.players.includes(name)) delete db.games[id];
+  for (const k of Object.keys(db.chatPrefs)) if (k.split('|').includes(name)) delete db.chatPrefs[k];
+  for (const u of Object.values(db.users)) { u.requests = (u.requests || []).filter(n => n !== name); u.blocked = (u.blocked || []).filter(n => n !== name); }
   delete db.users[name]; save();
 }
 const publicGame = g => ({ id: g.id, game: g.game, players: g.players, board: g.board, turn: g.turn, status: g.status, winner: g.winner, moves: g.moves, created: g.created });
@@ -240,7 +246,9 @@ function dispatchScheduledMessages() {
   for (const job of due) {
     const sender = db.users[job.from], recipient = db.users[job.to];
     if (!sender || !recipient || !(sender.friends || []).includes(job.to) || !(recipient.friends || []).includes(job.from)) continue;
-    const message = { from: job.from, to: job.to, text: job.text, media: [], t: now, scheduled: true };
+    if (isBlocked(job.to, job.from) || isBlocked(job.from, job.to)) continue;
+    const message = { id: mid(), from: job.from, to: job.to, text: job.text, media: [], t: now, scheduled: true };
+    const ttl = ttlFor(job.from, job.to); if (ttl) message.exp = now + ttl * 1000;
     db.messages.push(message);
     push(job.to, 'msg', message);
     push(job.from, 'scheduled-sent', { id: job.id, message });
@@ -249,6 +257,19 @@ function dispatchScheduledMessages() {
   save();
 }
 setInterval(dispatchScheduledMessages, 10000).unref?.();
+const DISAPPEAR = [0, 3600, 86400, 604800, 2592000];
+const REACTIONS = ['heart', 'star', 'check', 'bolt', 'ask', 'bang'];
+const pairKey = (a, b) => [a, b].sort().join('|');
+const isBlocked = (by, who) => !!(db.users[by]?.blocked || []).includes(who);
+function ttlFor(from, to) { const k = pairKey(from, to); let p = db.chatPrefs[k]; if (!p) { p = db.chatPrefs[k] = { disappear: Number(db.users[from]?.settings?.privacy?.defaultDisappear) || 0 }; } return Number(p.disappear) || 0; }
+function removeMsgFiles(m) { const ids = [...(m.media || []).map(x => x.id), m.voice && m.voice.id].filter(Boolean); for (const id of ids) { const it = db.mediaFiles[id]; if (it) { try { fs.unlinkSync(path.join(DATA_DIR, 'media', id + it.ext)); } catch {} delete db.mediaFiles[id]; } } }
+function sweepExpired() {
+  const now = Date.now(), gone = db.messages.filter(m => m.exp && m.exp <= now); if (!gone.length) return;
+  db.messages = db.messages.filter(m => !(m.exp && m.exp <= now));
+  for (const m of gone) { removeMsgFiles(m); push(m.from, 'msg-expire', { id: m.id, with: m.to }); push(m.to, 'msg-expire', { id: m.id, with: m.from }); }
+  save();
+}
+setInterval(sweepExpired, 20000).unref?.();
 
 // ---------- AI 助手「小伴」----------
 const SYSTEM = `你是「小伴」，Privacy App 里的 AI 助手。你聪明、靠谱、有点幽默，像一个什么都懂的好朋友。
@@ -503,18 +524,15 @@ async function api(req, res, url) {
 
   if (p === '/api/me') { const email=me.email||'',phone=me.phone||''; return send(res, 200, { me: { name: me.name, email:email?email.replace(/^(.).+(@.*)$/,'$1•••$2'):'', phone:phone?phone.replace(/(\+\d{1,3})\d{3,7}(\d{2,4})$/,'$1••••$2'):'' } }); }
   if (p === '/api/settings' && m === 'GET') {
-    const defaults = defaultSettings();
-    me.settings = Object.assign(defaults, me.settings || {});
-    me.settings.notifications = Object.assign(defaults.notifications, me.settings.notifications || {});
-    me.settings.security = Object.assign(defaults.security, me.settings.security || {});
+    normSettings(me);
     const email=me.email||'',phone=me.phone||'';
     return send(res, 200, { settings: me.settings, contacts:{email:email?email.replace(/^(.).+(@.*)$/,'$1•••$2'):'',phone:phone?phone.replace(/(\+\d{1,3})\d{3,7}(\d{2,4})$/,'$1••••$2'):''} });
   }
   if (p === '/api/settings' && m === 'POST') {
-    const b = await readBody(req), defaults = defaultSettings();
-    me.settings = Object.assign(defaults, me.settings || {});
-    me.settings.notifications = Object.assign(defaults.notifications, me.settings.notifications || {});
-    me.settings.security = Object.assign(defaults.security, me.settings.security || {});
+    const b = await readBody(req); normSettings(me);
+    const pv = b.privacy || {};
+    if (pv.addMode && ['open', 'confirm', 'closed'].includes(pv.addMode)) me.settings.privacy.addMode = pv.addMode;
+    if (pv.defaultDisappear !== undefined && DISAPPEAR.includes(Number(pv.defaultDisappear))) me.settings.privacy.defaultDisappear = Number(pv.defaultDisappear);
     const security = b.security || {};
     if (security.autoDeleteOnFailedLogin !== undefined && !!security.autoDeleteOnFailedLogin !== me.settings.security.autoDeleteOnFailedLogin) {
       if (typeof b.pass !== 'string' || hash(b.pass, me.salt) !== me.pw) return send(res, 403, { error: '更改自动删除设置前，请输入当前密码验证身份' });
@@ -604,21 +622,86 @@ async function api(req, res, url) {
     if (!f) return send(res, 404, { error: '没找到这个昵称，让朋友先注册吧' });
     if (f.name === me.name) return send(res, 400, { error: '不能加自己为好友' });
     if (me.friends.includes(name)) return send(res, 400, { error: '你们已经是好友了' });
+    const theyAsked = (me.requests || []).includes(name);
+    if (!theyAsked) {
+      if (isBlocked(name, me.name) || f.settings?.privacy?.addMode === 'closed') return send(res, 403, { error: '对方暂不接受新好友' });
+      if (f.settings?.privacy?.addMode === 'confirm') {
+        f.requests = f.requests || [];
+        if (f.requests.includes(me.name)) return send(res, 400, { error: '已发送过好友请求，请等对方确认' });
+        f.requests.push(me.name); save(); push(name, 'friend-request', { name: me.name });
+        return send(res, 200, { ok: true, pending: true });
+      }
+    } else me.requests = me.requests.filter(n => n !== name);
     me.friends.push(name); f.friends.push(me.name); save();
     push(name, 'friend', { name: me.name });
     return send(res, 200, { ok: true });
   }
 
+  if (p === '/api/friends/requests' && m === 'GET') return send(res, 200, { requests: (me.requests || []).filter(n => db.users[n]) });
+  if (p === '/api/friends/respond' && m === 'POST') {
+    const { name, accept } = await readBody(req); me.requests = me.requests || [];
+    if (!me.requests.includes(name)) return send(res, 404, { error: '这个好友请求不存在或已处理' });
+    me.requests = me.requests.filter(n => n !== name); const f = db.users[name];
+    if (accept && f) { if (!me.friends.includes(name)) me.friends.push(name); if (!f.friends.includes(me.name)) f.friends.push(me.name); push(name, 'friend', { name: me.name }); }
+    save(); return send(res, 200, { ok: true });
+  }
+  if (p === '/api/chats' && m === 'GET') {
+    const now = Date.now(), lastBy = {};
+    for (let i = db.messages.length - 1; i >= 0 && Object.keys(lastBy).length < me.friends.length; i--) {
+      const x = db.messages[i]; if (x.from !== me.name && x.to !== me.name) continue;
+      const peer = x.from === me.name ? x.to : x.from;
+      if (me.friends.includes(peer) && !lastBy[peer] && !(x.exp && x.exp <= now)) lastBy[peer] = x;
+    }
+    const kindOf = x => x.voice ? 'voice' : x.once ? 'once' : (x.media || []).length ? ((x.media[0].mime || '').startsWith('video/') ? 'video' : 'photo') : x.sticker ? 'sticker' : 'text';
+    return send(res, 200, { chats: me.friends.map(n => { const x = lastBy[n]; return { name: n, online: online(n), disappear: (db.chatPrefs[pairKey(me.name, n)] || {}).disappear || 0, blocked: isBlocked(me.name, n), last: x ? { id: x.id, from: x.from, t: x.t, kind: kindOf(x), text: String(x.text || (x.voice && x.voice.transcript) || x.sticker || '').slice(0, 60), dur: x.voice ? x.voice.dur : undefined } : null }; }) });
+  }
+  if (p === '/api/chat/prefs' && m === 'POST') {
+    const b = await readBody(req), w = String(b.with || ''), d = Number(b.disappear);
+    if (!me.friends.includes(w)) return send(res, 400, { error: '你们还不是好友' });
+    if (!DISAPPEAR.includes(d)) return send(res, 400, { error: '不支持这个时长' });
+    db.chatPrefs[pairKey(me.name, w)] = { disappear: d, by: me.name, t: Date.now() }; save();
+    push(w, 'chat-prefs', { with: me.name, disappear: d }); return send(res, 200, { ok: true, disappear: d });
+  }
+  if (p === '/api/blocks' && m === 'GET') return send(res, 200, { blocked: me.blocked || [] });
+  if (p === '/api/blocks' && m === 'POST') {
+    const { name, on } = await readBody(req);
+    if (!db.users[name] || name === me.name) return send(res, 400, { error: '无法屏蔽这个账号' });
+    me.blocked = (me.blocked || []).filter(n => n !== name); if (on) me.blocked.push(name); save();
+    return send(res, 200, { blocked: me.blocked });
+  }
+  if (p === '/api/messages/react' && m === 'POST') {
+    const { id, key } = await readBody(req), x = db.messages.find(y => y.id === String(id || ''));
+    if (!x || ![x.from, x.to].includes(me.name)) return send(res, 404, { error: '找不到这条消息' });
+    if (!REACTIONS.includes(key)) return send(res, 400, { error: '不支持这个印章' });
+    x.reactions = x.reactions || {}; const list = x.reactions[key] || [], i = list.indexOf(me.name);
+    if (i >= 0) list.splice(i, 1); else list.push(me.name);
+    if (list.length) x.reactions[key] = list; else delete x.reactions[key];
+    save(); const out = { id: x.id, reactions: x.reactions }; push(x.from, 'reaction', out); push(x.to, 'reaction', out);
+    return send(res, 200, out);
+  }
+  if (p === '/api/messages/delete' && m === 'POST') {
+    const { id } = await readBody(req), i = db.messages.findIndex(y => y.id === String(id || '')), x = db.messages[i];
+    if (!x || x.from !== me.name) return send(res, 404, { error: '只能为所有人删除自己发送的消息' });
+    db.messages.splice(i, 1); removeMsgFiles(x); save();
+    push(x.from, 'msg-delete', { id: x.id, with: x.to }); push(x.to, 'msg-delete', { id: x.id, with: x.from });
+    return send(res, 200, { ok: true });
+  }
+  if (p === '/api/export' && m === 'GET') {
+    const out = { app: 'Privacy', version: VERSION, exportedAt: new Date().toISOString(), account: { name: me.name, email: me.email || '', phone: me.phone || '', friends: me.friends, blocked: me.blocked || [] }, settings: normSettings(me), messages: db.messages.filter(x => x.from === me.name || x.to === me.name), scheduled: db.scheduledMessages.filter(x => x.from === me.name) };
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Disposition': 'attachment; filename="privacy-export.json"', 'Cache-Control': 'no-store' });
+    return res.end(JSON.stringify(out, null, 2));
+  }
+
   if (p === '/api/messages' && m === 'GET') {
     const w = url.searchParams.get('with');
-    const list = db.messages.filter(x => (x.from === me.name && x.to === w) || (x.from === w && x.to === me.name)).slice(-100);
+    const list = db.messages.filter(x => (x.from === me.name && x.to === w) || (x.from === w && x.to === me.name)).filter(x => !(x.exp && x.exp <= Date.now())).slice(-100);
     return send(res, 200, { messages: list });
   }
   if (p === '/api/search' && m === 'GET') {
     const q = String(url.searchParams.get('q') || '').trim().toLowerCase().slice(0, 120);
     if (!q) return send(res, 200, { results: [] });
-    const results = db.messages.filter(x => (x.from === me.name || x.to === me.name) && ((x.text || '').toLowerCase().includes(q) || (x.media || []).some(f => String(f.name || '').toLowerCase().includes(q)) || String(x.sticker || '').toLowerCase().includes(q)))
-      .slice(-500).reverse().slice(0, 80).map(x => ({ type: 'message', peer: x.from === me.name ? x.to : x.from, from: x.from, text: x.text || (x.media?.length ? '媒体文件' : x.sticker || '贴纸'), t: x.t }));
+    const results = db.messages.filter(x => (x.from === me.name || x.to === me.name) && ((x.text || '').toLowerCase().includes(q) || String((x.voice && x.voice.transcript) || '').toLowerCase().includes(q) || (x.media || []).some(f => String(f.name || '').toLowerCase().includes(q)) || String(x.sticker || '').toLowerCase().includes(q)))
+      .slice(-500).reverse().slice(0, 80).map(x => ({ type: 'message', peer: x.from === me.name ? x.to : x.from, from: x.from, text: x.text || (x.voice ? (x.voice.transcript || '语音消息') : x.media?.length ? '媒体文件' : x.sticker || '贴纸'), t: x.t }));
     return send(res, 200, { results });
   }
   if (p === '/api/messages/scheduled' && m === 'GET') {
@@ -646,17 +729,22 @@ async function api(req, res, url) {
   if (mediaMatch && m === 'GET') {
     const id = mediaMatch[1], item = db.mediaFiles[id];
     if (!item || ![item.from, item.to].includes(me.name) || !db.users[item.from]?.friends?.includes(item.to)) return send(res, 404, { error: '找不到这份聊天媒体' });
+    if (item.once) {
+      if (me.name === item.from) return send(res, 403, { error: '限时照片只能由对方查看一次' });
+      if (item.viewed) return send(res, 410, { error: '限时照片已查看，已被销毁' });
+    }
     return fs.readFile(path.join(DATA_DIR, 'media', id + item.ext), (err, data) => {
       if (err) return send(res, 404, { error: '这份媒体暂时无法读取' });
       res.writeHead(200, { 'Content-Type': item.mime, 'Content-Length': data.length, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Disposition': 'inline; filename="' + encodeURIComponent(item.name) + '"' });
       res.end(data);
+      if (item.once) { item.viewed = true; try { fs.unlinkSync(path.join(DATA_DIR, 'media', id + item.ext)); } catch {} save(); push(item.from, 'once-viewed', { id }); }
     });
   }
   if (p === '/api/media' && m === 'POST') {
-    const b = await readBody(req, 9 * 1024 * 1024), to = String(b.to || ''), mime = String(b.mime || '').toLowerCase();
-    const types = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif', 'video/mp4': '.mp4', 'video/webm': '.webm', 'video/quicktime': '.mov' };
+    const b = await readBody(req, 9 * 1024 * 1024), to = String(b.to || ''), mime = String(b.mime || '').toLowerCase().split(';')[0].trim();
+    const types = { 'audio/webm': '.weba', 'audio/ogg': '.ogg', 'audio/mp4': '.m4a', 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif', 'video/mp4': '.mp4', 'video/webm': '.webm', 'video/quicktime': '.mov' };
     if (!me.friends.includes(to)) return send(res, 400, { error: '只能发送给已添加的好友' });
-    if (!types[mime]) return send(res, 415, { error: '目前支持 JPG、PNG、WebP、GIF、MP4、WebM 和 MOV 格式' });
+    if (!types[mime]) return send(res, 415, { error: '目前支持 JPG、PNG、WebP、GIF、MP4、WebM、MOV 以及语音（WebM、OGG、M4A）格式' });
     const encoded = String(b.data || '').replace(/^data:[^,]+,/, '');
     if (!/^[A-Za-z0-9+/]*={0,2}$/.test(encoded) || !encoded || encoded.length > 7 * 1024 * 1024) return send(res, 413, { error: '请选择不超过 5 MB 的有效文件' });
     const data = Buffer.from(encoded, 'base64');
@@ -666,29 +754,45 @@ async function api(req, res, url) {
       : mime === 'image/png' ? starts(0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a)
       : mime === 'image/gif' ? ['GIF87a','GIF89a'].includes(data.subarray(0,6).toString())
       : mime === 'image/webp' ? data.subarray(0,4).toString() === 'RIFF' && data.subarray(8,12).toString() === 'WEBP'
-      : mime === 'video/webm' ? starts(0x1a,0x45,0xdf,0xa3)
-      : (mime === 'video/mp4' || mime === 'video/quicktime') && data.length > 12 && data.subarray(4,8).toString() === 'ftyp';
+      : (mime === 'video/webm' || mime === 'audio/webm') ? starts(0x1a,0x45,0xdf,0xa3)
+      : mime === 'audio/ogg' ? data.subarray(0,4).toString() === 'OggS'
+      : (mime === 'video/mp4' || mime === 'video/quicktime' || mime === 'audio/mp4') && data.length > 12 && data.subarray(4,8).toString() === 'ftyp';
     if (!valid) return send(res, 400, { error: '文件内容与格式不匹配，请重新选择' });
     const id = crypto.randomBytes(12).toString('hex'), ext = types[mime], dir = path.join(DATA_DIR, 'media');
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, id + ext), data, { flag: 'wx' });
     const name = path.basename(String(b.name || 'media' + ext)).replace(/[\r\n"\\/]/g, '_').slice(0, 120) || 'media' + ext;
-    db.mediaFiles[id] = { id, from: me.name, to, mime, ext, name, size: data.length, t: Date.now() };
+    db.mediaFiles[id] = { id, from: me.name, to, mime, ext, name, size: data.length, t: Date.now(), once: !!b.once && /^(image|video)\//.test(mime) };
     save();
-    return send(res, 200, { media: { id, mime, name, size: data.length } });
+    return send(res, 200, { media: { id, mime, name, size: data.length, once: db.mediaFiles[id].once || undefined } });
   }
   if (p === '/api/messages' && m === 'POST') {
-    const { to, text, media, sticker } = await readBody(req);
+    const { to, text, media, sticker, voice, reply } = await readBody(req);
     if (!me.friends.includes(to)) return send(res, 400, { error: '你们还不是好友' });
+    if (isBlocked(me.name, to)) return send(res, 403, { error: '你已屏蔽对方，解除屏蔽后才能发送' });
+    if (isBlocked(to, me.name)) return send(res, 403, { error: '消息暂时无法送达' });
     const t = String(text || '').trim().slice(0, 1000);
     const files = Array.isArray(media) ? media.slice(0, 6).map(x => {
       const f = db.mediaFiles[String(x.id || '')];
-      return f && f.from === me.name && f.to === to ? { id: f.id, mime: f.mime, name: f.name, size: f.size } : null;
+      return f && f.from === me.name && f.to === to ? { id: f.id, mime: f.mime, name: f.name, size: f.size, once: f.once || undefined } : null;
     }) : [];
     if (Array.isArray(media) && (media.length > 6 || files.some(x => !x))) return send(res, 403, { error: '最多发送 6 个文件，请重新选择' });
     const stickerValue = typeof sticker === 'string' ? sticker.slice(0, 12) : '';
-    if (!t && !files.length && !stickerValue) return send(res, 400, { error: '消息内容为空' });
-    const msg = { from: me.name, to, text: t, media: files, sticker: stickerValue || undefined, t: Date.now() };
+    let v;
+    if (voice && typeof voice === 'object') {
+      const f = db.mediaFiles[String(voice.id || '')];
+      if (!f || f.from !== me.name || f.to !== to || !String(f.mime).startsWith('audio/')) return send(res, 403, { error: '语音文件无效，请重新录制' });
+      const wave = Array.isArray(voice.wave) ? voice.wave.slice(0, 64).map(n => Math.max(0, Math.min(100, Math.round(Number(n) || 0)))) : [], tr = String(voice.transcript || '').trim().slice(0, 1000);
+      v = { id: f.id, dur: Math.max(1, Math.min(300, Math.round(Number(voice.dur) || 1))), wave, transcript: tr || undefined };
+    }
+    let rp;
+    if (reply && typeof reply === 'object') {
+      const o = db.messages.find(x => x.id === String(reply.id || '') && [x.from, x.to].includes(me.name) && [x.from, x.to].includes(to));
+      if (o) rp = { id: o.id, from: o.from, text: String(o.text || (o.voice ? '语音消息' : o.media?.length ? '照片或视频' : o.sticker || '')).slice(0, 60) };
+    }
+    if (!t && !files.length && !stickerValue && !v) return send(res, 400, { error: '消息内容为空' });
+    const now = Date.now(), msg = { id: mid(), from: me.name, to, text: t, media: files, sticker: stickerValue || undefined, voice: v, reply: rp, once: files.some(x => x && x.once) || undefined, t: now };
+    const ttl = ttlFor(me.name, to); if (ttl) msg.exp = now + ttl * 1000;
     db.messages.push(msg); if (db.messages.length > 20000) db.messages.splice(0, 5000); save();
     push(to, 'msg', msg);
     return send(res, 200, { message: msg });
